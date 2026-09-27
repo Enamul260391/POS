@@ -17,7 +17,7 @@ class RolesAndPermissionsSeeder extends Seeder
         $roles = [
             'admin' => 'Full access to all features',
             'manager' => 'Manage products, sales, purchases, and reports',
-            'cashier' => 'Handle sales and customer management',
+            'salesman' => 'Handle sales and customer management',
             'accountant' => 'Manage purchases, expenses, and payments',
         ];
 

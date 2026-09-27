@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\V1\SaleReturnController;
 use App\Http\Controllers\Api\V1\SettingsController;
 use App\Http\Controllers\Api\V1\StockMovementController;
 use App\Http\Controllers\Api\V1\SupplierController;
+use App\Http\Controllers\Api\V1\UserController;
 use App\Http\Controllers\Api\V1\UserRoleController;
 use Illuminate\Support\Facades\Route;
 
@@ -177,6 +178,20 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::get('/permissions', [PermissionController::class, 'index'])
             ->middleware('can:permissions.view')
             ->name('permissions.index');
+
+        // Staff directory — read and manage the accounts of this business.
+        Route::get('/users', [UserController::class, 'index'])
+            ->middleware('can:users.view')
+            ->name('users.index');
+        Route::post('/users', [UserController::class, 'store'])
+            ->middleware('can:users.create')
+            ->name('users.store');
+        Route::get('/users/{user}', [UserController::class, 'show'])
+            ->middleware('can:users.view')
+            ->name('users.show');
+        Route::match(['put', 'patch'], '/users/{user}', [UserController::class, 'update'])
+            ->middleware('can:users.update')
+            ->name('users.update');
 
         // User -> role assignment (full replace, idempotent).
         Route::match(['put', 'patch'], '/users/{user}/roles', [UserRoleController::class, 'sync'])

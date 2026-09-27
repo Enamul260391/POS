@@ -15,7 +15,7 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
  * Permissions are a **global** catalogue: the `permissions` table has no
  * `business_id`, so a permission is a system-wide definition (`roles.update`)
  * and a business grants a subset of it to its own roles. Because of that this
- * service exposes no create/update/delete — the catalogue is seeded
+ * service exposes no create/update/delete â€” the catalogue is seeded
  * (`RolesAndPermissionsSeeder`) and read-only through the API.
  *
  * ## Naming
@@ -50,6 +50,15 @@ final class PermissionService
     /** Read the global permission catalogue. */
     public const PERMISSIONS_VIEW = 'permissions.view';
 
+    /** Read the staff directory. */
+    public const USERS_VIEW = 'users.view';
+
+    /** Create staff accounts. */
+    public const USERS_CREATE = 'users.create';
+
+    /** Edit staff accounts. */
+    public const USERS_UPDATE = 'users.update';
+
     /** Change which roles a user holds. */
     public const USERS_ROLES_UPDATE = 'users.roles.update';
 
@@ -73,6 +82,9 @@ final class PermissionService
         self::ROLES_UPDATE => [self::ROLES_UPDATE, 'roles.manage'],
         self::ROLES_DELETE => [self::ROLES_DELETE, 'roles.manage'],
         self::PERMISSIONS_VIEW => [self::PERMISSIONS_VIEW, 'roles.manage'],
+        self::USERS_VIEW => [self::USERS_VIEW, 'users.manage'],
+        self::USERS_CREATE => [self::USERS_CREATE, 'users.manage'],
+        self::USERS_UPDATE => [self::USERS_UPDATE, 'users.manage'],
         self::USERS_ROLES_UPDATE => [self::USERS_ROLES_UPDATE, 'users.manage', 'roles.manage'],
         self::SETTINGS_VIEW => [self::SETTINGS_VIEW, 'settings.manage'],
         self::SETTINGS_UPDATE => [self::SETTINGS_UPDATE, 'settings.manage'],
@@ -85,6 +97,9 @@ final class PermissionService
         self::ROLES_UPDATE,
         self::ROLES_DELETE,
         self::PERMISSIONS_VIEW,
+        self::USERS_VIEW,
+        self::USERS_CREATE,
+        self::USERS_UPDATE,
         self::USERS_ROLES_UPDATE,
         self::SETTINGS_VIEW,
         self::SETTINGS_UPDATE,
@@ -174,7 +189,7 @@ final class PermissionService
     /**
      * Resolve existing permission ids in a single query.
      *
-     * Permissions are global, so only existence has to be checked — there is no
+     * Permissions are global, so only existence has to be checked â€” there is no
      * ownership to verify. Returns the ids that actually exist, letting the
      * caller compare against the requested set and reject anything unknown
      * before the pivot table is touched.
