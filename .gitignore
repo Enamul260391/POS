@@ -1,0 +1,62 @@
+# ---------------------------------------------------------------------------
+# Workspace-level ignores
+#
+# `backend/` and `frontend/` each carry their own .gitignore; this file covers
+# the repository root and anything that is not a real deliverable.
+#
+# NOTE: this repository currently has no git history (the root was never
+# initialised). These rules are correct and ready for whenever it is.
+# ---------------------------------------------------------------------------
+
+# Secrets — the application configuration files must never be committed.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+
+# Dependencies
+node_modules/
+vendor/
+
+# Build output
+.next/
+out/
+build/
+dist/
+public/build/
+public/hot/
+
+# Framework caches and compiled state
+.phpunit.cache/
+.phpunit.result.cache
+*.tsbuildinfo
+next-env.d.ts
+
+# Storage / logs (Laravel)
+storage/logs/*.log
+storage/framework/cache/data/
+storage/framework/sessions/
+storage/framework/views/
+
+# ---------------------------------------------------------------------------
+# Development scratch files
+#
+# The repository root accumulated a number of captured command outputs
+# (file listings, migration dumps, tsc baselines) during earlier phases. None
+# are part of the deliverable, and some echo local file listings.
+# ---------------------------------------------------------------------------
+*.txt
+x
+.*.txt
+.*.log
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
