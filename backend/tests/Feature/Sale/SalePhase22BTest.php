@@ -69,8 +69,10 @@ class SalePhase22BTest extends TestCase
     public function list_pagination_search_and_customer_filter(): void
     {
         $base = ['customer_id' => $this->customer->id, 'sale_date' => now()->toDateString()];
-        $this->postJson('/api/v1/sales', array_merge($base, ['invoice_number' => 'INV-ALPHA-1', 'items' => [['product_id' => $this->product->id, 'quantity' => 1, 'unit_price' => 500]]]))->assertStatus(201);
-        $this->postJson('/api/v1/sales', array_merge($base, ['invoice_number' => 'INV-BETA-2', 'items' => [['product_id' => $this->product->id, 'quantity' => 1, 'unit_price' => 500]]]))->assertStatus(201);
+        // The invoice number is server-generated, so the two documents are told
+        // apart by the only client-writable free text: their notes.
+        $this->postJson('/api/v1/sales', array_merge($base, ['notes' => 'ALPHA sale', 'items' => [['product_id' => $this->product->id, 'quantity' => 1, 'unit_price' => 500]]]))->assertStatus(201);
+        $this->postJson('/api/v1/sales', array_merge($base, ['notes' => 'BETA sale', 'items' => [['product_id' => $this->product->id, 'quantity' => 1, 'unit_price' => 500]]]))->assertStatus(201);
         Sale::factory()->create(['business_id' => $this->otherBusiness->id]);
 
         $page = $this->getJson('/api/v1/sales?per_page=1&page=2');

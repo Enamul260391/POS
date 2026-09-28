@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Requests\Sale;
 
 use App\Http\Requests\Concerns\ResolvesBusiness;
+use App\Models\Payment;
 use App\Support\Money;
 use App\Support\Quantity;
 use Illuminate\Foundation\Http\FormRequest;
@@ -13,6 +14,16 @@ use Illuminate\Validation\Rules\Exists;
 
 /**
  * Payload of `POST /api/v1/sales`.
+ *
+ * `invoice_number` is **server owned** and is therefore not an input.
+ * `InvoiceNumberService` allocates it from the business' locked sequence row
+ * inside the same transaction that creates the sale, so the number is
+ * persistent, unique per business and impossible to guess or forge.
+ *
+ * The key is still declared — as `prohibited` — so a client that sends
+ * `"invoice_number": "FAKE-123"` gets an explicit `422` telling it the field is
+ * not writable, instead of having the value silently dropped and a real number
+ * issued anyway. Either way the client cannot influence the outcome.
  */
 class StoreSaleRequest extends FormRequest
 {
@@ -32,12 +43,12 @@ class StoreSaleRequest extends FormRequest
     {
         return [
             'customer_id' => ['nullable', 'integer', $this->customerRule()],
-            'invoice_number' => ['nullable', 'string', 'max:50'],
+            'invoice_number' => ['prohibited'],
             'sale_date' => ['required', 'date'],
             'discount' => ['nullable', 'numeric', 'min:0', 'max:'.Money::MAX, 'decimal:0,2'],
             'tax' => ['nullable', 'numeric', 'min:0', 'max:'.Money::MAX, 'decimal:0,2'],
             'paid_amount' => ['nullable', 'numeric', 'min:0', 'max:'.Money::MAX, 'decimal:0,2'],
-            'payment_method' => ['nullable', 'string', Rule::in(\App\Models\Payment::PAYMENT_METHODS)],
+            'payment_method' => ['nullable', 'string', Rule::in(Payment::PAYMENT_METHODS)],
             'payment_reference' => ['nullable', 'string', 'max:100'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'items' => ['required', 'array', 'min:1', 'max:'.self::MAX_ITEMS],
@@ -51,8 +62,10 @@ class StoreSaleRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        // `invoice_number` is intentionally absent: normalising it here would
+        // put the key into the payload and trip its own `prohibited` rule on
+        // every single request.
         $this->merge([
-            'invoice_number' => $this->filled('invoice_number') ? trim((string) $this->input('invoice_number')) : null,
             'notes' => $this->filled('notes') ? trim((string) $this->input('notes')) : null,
             'payment_reference' => $this->filled('payment_reference') ? trim((string) $this->input('payment_reference')) : null,
         ]);

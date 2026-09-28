@@ -17,7 +17,10 @@ class SaleFactory extends Factory
     {
         return [
             'business_id' => Business::factory(),
-            'invoice_number' => 'SINV-'.fake()->unique()->numberBetween(1, 100000000),
+            // Mirrors the production format `{prefix}-{000000}`. The API always
+            // supplies this itself; the factory only needs *a* unique,
+            // non-null value for fixture rows.
+            'invoice_number' => 'INV-'.fake()->unique()->numerify('######'),
             'customer_id' => null,
             'sale_date' => now()->toDateString(),
             'subtotal' => '0.00',

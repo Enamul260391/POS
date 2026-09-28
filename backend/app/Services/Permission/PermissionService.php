@@ -20,12 +20,11 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
  *
  * ## Naming
  * The API authorises against the fine-grained capability names below
- * (`roles.view`, `roles.create`, `roles.update`, `roles.delete`,
- * `permissions.view`, `users.roles.update`, `settings.view`, `settings.update`).
+ * (`roles.update`, `sales.create`, `products.view`, `inventory.manage`, ...).
  * The existing seeded catalogue uses the coarser `<resource>.manage` convention
- * (`roles.manage`, `users.manage`, `settings.manage`), and those rows already
- * exist in installations. Rather than inventing a second naming system or
- * forcing a reseed, each capability accepts a set of equivalent slugs: the
+ * (`roles.manage`, `sales.manage`, `inventory.manage`, ...), and those rows
+ * already exist in installations. Rather than inventing a second naming system
+ * or forcing a reseed, each capability accepts a set of equivalent slugs: the
  * specific one **or** the coarser `*.manage` permission for the same resource.
  * A business that seeds the finer catalogue gets exact per-action control; one
  * that still has the original `*.manage` rows keeps working unchanged.
@@ -68,6 +67,171 @@ final class PermissionService
     /** Change business settings. */
     public const SETTINGS_UPDATE = 'settings.update';
 
+    // ------------------------------------------------------------------
+    // Operational domains
+    //
+    // Each domain follows the same shape as the administration block above:
+    // a fine-grained capability per verb, with the pre-existing coarse
+    // `<resource>.manage` permission accepted as a compatibility alias. A role
+    // that was seeded with only `products.manage` therefore keeps exactly the
+    // product access it always had, while a role that is granted the newer
+    // `products.view` can be restricted to reading.
+    // ------------------------------------------------------------------
+
+    /** Read the product catalogue. */
+    public const CATEGORIES_VIEW = 'categories.view';
+
+    /** Create categories. */
+    public const CATEGORIES_CREATE = 'categories.create';
+
+    /** Edit categories. */
+    public const CATEGORIES_UPDATE = 'categories.update';
+
+    /** Delete categories. */
+    public const CATEGORIES_DELETE = 'categories.delete';
+
+    /** Read products. */
+    public const PRODUCTS_VIEW = 'products.view';
+
+    /** Create products. */
+    public const PRODUCTS_CREATE = 'products.create';
+
+    /** Edit products. */
+    public const PRODUCTS_UPDATE = 'products.update';
+
+    /** Delete products. */
+    public const PRODUCTS_DELETE = 'products.delete';
+
+    /** Read the stock movement ledger. */
+    public const INVENTORY_VIEW = 'inventory.view';
+
+    /**
+     * Apply a manual stock adjustment.
+     *
+     * Deliberately a single capability: stock correction is a ledger write that
+     * bypasses the normal purchase/sale flow, so it is never a "read" or an
+     * ordinary CRUD verb. The slug is the pre-existing `inventory.manage`
+     * permission, so no new permission row is introduced for it.
+     */
+    public const INVENTORY_MANAGE = 'inventory.manage';
+
+    /** Read customers. */
+    public const CUSTOMERS_VIEW = 'customers.view';
+
+    /** Create customers. */
+    public const CUSTOMERS_CREATE = 'customers.create';
+
+    /** Edit customers. */
+    public const CUSTOMERS_UPDATE = 'customers.update';
+
+    /** Delete customers. */
+    public const CUSTOMERS_DELETE = 'customers.delete';
+
+    /** Read suppliers. */
+    public const SUPPLIERS_VIEW = 'suppliers.view';
+
+    /** Create suppliers. */
+    public const SUPPLIERS_CREATE = 'suppliers.create';
+
+    /** Edit suppliers. */
+    public const SUPPLIERS_UPDATE = 'suppliers.update';
+
+    /** Delete suppliers. */
+    public const SUPPLIERS_DELETE = 'suppliers.delete';
+
+    /** Read purchases. */
+    public const PURCHASES_VIEW = 'purchases.view';
+
+    /** Create purchases (which also post the stock-in movements). */
+    public const PURCHASES_CREATE = 'purchases.create';
+
+    /** Edit purchases. */
+    public const PURCHASES_UPDATE = 'purchases.update';
+
+    /** Delete purchases. */
+    public const PURCHASES_DELETE = 'purchases.delete';
+
+    /** Read sales. */
+    public const SALES_VIEW = 'sales.view';
+
+    /** Create sales (which also deducts ledger stock). */
+    public const SALES_CREATE = 'sales.create';
+
+    /** Edit sales. */
+    public const SALES_UPDATE = 'sales.update';
+
+    /** Delete sales. */
+    public const SALES_DELETE = 'sales.delete';
+
+    /**
+     * Record a payment against an existing sale.
+     *
+     * Its own capability because taking money is a distinct capability from
+     * raising the sale itself: a cashier who may take payment need not be
+     * allowed to create or amend sales.
+     */
+    public const SALES_PAYMENTS_CREATE = 'sales.payments.create';
+
+    /** Read sale returns. */
+    public const SALE_RETURNS_VIEW = 'sale_returns.view';
+
+    /** Create sale returns (which also restore ledger stock). */
+    public const SALE_RETURNS_CREATE = 'sale_returns.create';
+
+    /** Read expenses. */
+    public const EXPENSES_VIEW = 'expenses.view';
+
+    /** Create expenses. */
+    public const EXPENSES_CREATE = 'expenses.create';
+
+    /** Edit expenses. */
+    public const EXPENSES_UPDATE = 'expenses.update';
+
+    /** Delete expenses. */
+    public const EXPENSES_DELETE = 'expenses.delete';
+
+    /** Read expense categories. */
+    public const EXPENSE_CATEGORIES_VIEW = 'expense_categories.view';
+
+    /** Create expense categories. */
+    public const EXPENSE_CATEGORIES_CREATE = 'expense_categories.create';
+
+    /** Edit expense categories. */
+    public const EXPENSE_CATEGORIES_UPDATE = 'expense_categories.update';
+
+    /** Delete expense categories. */
+    public const EXPENSE_CATEGORIES_DELETE = 'expense_categories.delete';
+
+    /**
+     * Read a cash register: the current/shift view, its summary and its
+     * transaction log. A cashier needs this to run a till.
+     */
+    public const CASH_REGISTERS_VIEW = 'cash_registers.view';
+
+    /** Open a cash register at the start of a shift. */
+    public const CASH_REGISTERS_CREATE = 'cash_registers.create';
+
+    /** Close a cash register at the end of a shift. */
+    public const CASH_REGISTERS_UPDATE = 'cash_registers.update';
+
+    /**
+     * Record a manual cash movement (cash in / cash out).
+     *
+     * The slug is the pre-existing `cash_registers.manage` permission: moving
+     * money in or out of the drawer by hand is exactly what that coarse
+     * capability was created for, so no new permission row is introduced.
+     */
+    public const CASH_REGISTERS_MANAGE = 'cash_registers.manage';
+
+    /**
+     * Read the reporting suite (dashboard, sales, purchases, expenses,
+     * profit-loss and inventory).
+     *
+     * Reports are read-only, so a single capability covers the whole domain.
+     * The slug is the pre-existing `reports.view` permission.
+     */
+    public const REPORTS_VIEW = 'reports.view';
+
     /**
      * Accepted slug aliases per capability.
      *
@@ -88,6 +252,68 @@ final class PermissionService
         self::USERS_ROLES_UPDATE => [self::USERS_ROLES_UPDATE, 'users.manage', 'roles.manage'],
         self::SETTINGS_VIEW => [self::SETTINGS_VIEW, 'settings.manage'],
         self::SETTINGS_UPDATE => [self::SETTINGS_UPDATE, 'settings.manage'],
+
+        // Categories — `categories.manage` is new: the catalogue had no
+        // category permission at all, so there is no pre-existing coarse
+        // capability for this domain to alias.
+        self::CATEGORIES_VIEW => [self::CATEGORIES_VIEW, 'categories.manage'],
+        self::CATEGORIES_CREATE => [self::CATEGORIES_CREATE, 'categories.manage'],
+        self::CATEGORIES_UPDATE => [self::CATEGORIES_UPDATE, 'categories.manage'],
+        self::CATEGORIES_DELETE => [self::CATEGORIES_DELETE, 'categories.manage'],
+
+        self::PRODUCTS_VIEW => [self::PRODUCTS_VIEW, 'products.manage'],
+        self::PRODUCTS_CREATE => [self::PRODUCTS_CREATE, 'products.manage'],
+        self::PRODUCTS_UPDATE => [self::PRODUCTS_UPDATE, 'products.manage'],
+        self::PRODUCTS_DELETE => [self::PRODUCTS_DELETE, 'products.manage'],
+
+        self::INVENTORY_VIEW => [self::INVENTORY_VIEW, 'inventory.manage'],
+        self::INVENTORY_MANAGE => [self::INVENTORY_MANAGE, 'inventory.adjust'],
+
+        self::CUSTOMERS_VIEW => [self::CUSTOMERS_VIEW, 'customers.manage'],
+        self::CUSTOMERS_CREATE => [self::CUSTOMERS_CREATE, 'customers.manage'],
+        self::CUSTOMERS_UPDATE => [self::CUSTOMERS_UPDATE, 'customers.manage'],
+        self::CUSTOMERS_DELETE => [self::CUSTOMERS_DELETE, 'customers.manage'],
+
+        self::SUPPLIERS_VIEW => [self::SUPPLIERS_VIEW, 'suppliers.manage'],
+        self::SUPPLIERS_CREATE => [self::SUPPLIERS_CREATE, 'suppliers.manage'],
+        self::SUPPLIERS_UPDATE => [self::SUPPLIERS_UPDATE, 'suppliers.manage'],
+        self::SUPPLIERS_DELETE => [self::SUPPLIERS_DELETE, 'suppliers.manage'],
+
+        self::PURCHASES_VIEW => [self::PURCHASES_VIEW, 'purchases.manage'],
+        self::PURCHASES_CREATE => [self::PURCHASES_CREATE, 'purchases.manage'],
+        self::PURCHASES_UPDATE => [self::PURCHASES_UPDATE, 'purchases.manage'],
+        self::PURCHASES_DELETE => [self::PURCHASES_DELETE, 'purchases.manage'],
+
+        self::SALES_VIEW => [self::SALES_VIEW, 'sales.manage'],
+        self::SALES_CREATE => [self::SALES_CREATE, 'sales.manage'],
+        self::SALES_UPDATE => [self::SALES_UPDATE, 'sales.manage'],
+        self::SALES_DELETE => [self::SALES_DELETE, 'sales.manage'],
+        self::SALES_PAYMENTS_CREATE => [self::SALES_PAYMENTS_CREATE, 'sales.manage'],
+
+        // Sale returns — `sale_returns.manage` is new, for the same reason as
+        // `categories.manage`: the catalogue had no permission for this domain.
+        self::SALE_RETURNS_VIEW => [self::SALE_RETURNS_VIEW, 'sale_returns.manage'],
+        self::SALE_RETURNS_CREATE => [self::SALE_RETURNS_CREATE, 'sale_returns.manage'],
+
+        self::EXPENSES_VIEW => [self::EXPENSES_VIEW, 'expenses.manage'],
+        self::EXPENSES_CREATE => [self::EXPENSES_CREATE, 'expenses.manage'],
+        self::EXPENSES_UPDATE => [self::EXPENSES_UPDATE, 'expenses.manage'],
+        self::EXPENSES_DELETE => [self::EXPENSES_DELETE, 'expenses.manage'],
+
+        // Expense categories are a sub-resource of expenses: the existing
+        // coarse `expenses.manage` is their only compatibility alias, so a role
+        // that could manage expenses can always manage their categories.
+        self::EXPENSE_CATEGORIES_VIEW => [self::EXPENSE_CATEGORIES_VIEW, 'expense_categories.manage', 'expenses.manage'],
+        self::EXPENSE_CATEGORIES_CREATE => [self::EXPENSE_CATEGORIES_CREATE, 'expense_categories.manage', 'expenses.manage'],
+        self::EXPENSE_CATEGORIES_UPDATE => [self::EXPENSE_CATEGORIES_UPDATE, 'expense_categories.manage', 'expenses.manage'],
+        self::EXPENSE_CATEGORIES_DELETE => [self::EXPENSE_CATEGORIES_DELETE, 'expense_categories.manage', 'expenses.manage'],
+
+        self::CASH_REGISTERS_VIEW => [self::CASH_REGISTERS_VIEW, 'cash_registers.manage'],
+        self::CASH_REGISTERS_CREATE => [self::CASH_REGISTERS_CREATE, 'cash_registers.manage'],
+        self::CASH_REGISTERS_UPDATE => [self::CASH_REGISTERS_UPDATE, 'cash_registers.manage'],
+        self::CASH_REGISTERS_MANAGE => [self::CASH_REGISTERS_MANAGE, 'cash_registers.transactions.create'],
+
+        self::REPORTS_VIEW => [self::REPORTS_VIEW, 'reports.manage'],
     ];
 
     /** Every capability name, in a stable order (used for docs and tests). */
@@ -103,6 +329,48 @@ final class PermissionService
         self::USERS_ROLES_UPDATE,
         self::SETTINGS_VIEW,
         self::SETTINGS_UPDATE,
+        self::CATEGORIES_VIEW,
+        self::CATEGORIES_CREATE,
+        self::CATEGORIES_UPDATE,
+        self::CATEGORIES_DELETE,
+        self::PRODUCTS_VIEW,
+        self::PRODUCTS_CREATE,
+        self::PRODUCTS_UPDATE,
+        self::PRODUCTS_DELETE,
+        self::INVENTORY_VIEW,
+        self::INVENTORY_MANAGE,
+        self::CUSTOMERS_VIEW,
+        self::CUSTOMERS_CREATE,
+        self::CUSTOMERS_UPDATE,
+        self::CUSTOMERS_DELETE,
+        self::SUPPLIERS_VIEW,
+        self::SUPPLIERS_CREATE,
+        self::SUPPLIERS_UPDATE,
+        self::SUPPLIERS_DELETE,
+        self::PURCHASES_VIEW,
+        self::PURCHASES_CREATE,
+        self::PURCHASES_UPDATE,
+        self::PURCHASES_DELETE,
+        self::SALES_VIEW,
+        self::SALES_CREATE,
+        self::SALES_UPDATE,
+        self::SALES_DELETE,
+        self::SALES_PAYMENTS_CREATE,
+        self::SALE_RETURNS_VIEW,
+        self::SALE_RETURNS_CREATE,
+        self::EXPENSES_VIEW,
+        self::EXPENSES_CREATE,
+        self::EXPENSES_UPDATE,
+        self::EXPENSES_DELETE,
+        self::EXPENSE_CATEGORIES_VIEW,
+        self::EXPENSE_CATEGORIES_CREATE,
+        self::EXPENSE_CATEGORIES_UPDATE,
+        self::EXPENSE_CATEGORIES_DELETE,
+        self::CASH_REGISTERS_VIEW,
+        self::CASH_REGISTERS_CREATE,
+        self::CASH_REGISTERS_UPDATE,
+        self::CASH_REGISTERS_MANAGE,
+        self::REPORTS_VIEW,
     ];
 
     /** Columns a client may sort the catalogue by. */

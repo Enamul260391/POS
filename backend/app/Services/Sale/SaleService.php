@@ -50,6 +50,7 @@ final class SaleService
     public function __construct(
         private readonly InventoryService $inventory,
         private readonly CashRegisterService $cashRegisters,
+        private readonly InvoiceNumberService $invoiceNumbers,
     ) {}
 
     public function paginate(int $businessId, array $filters): LengthAwarePaginator
@@ -149,10 +150,18 @@ final class SaleService
                 }
             }
 
+            // The backend owns the invoice number. `InvoiceNumberService`
+            // allocates it from this business' locked sequence row inside the
+            // transaction that is about to write the sale, so the number and
+            // the document it identifies commit or roll back together and two
+            // concurrent checkouts can never be handed the same one. Any
+            // `invoice_number` the client sent is deliberately not read.
+            $invoiceNumber = $this->invoiceNumbers->allocate($businessId);
+
             $sale = Sale::create([
                 'business_id' => $businessId,
                 'customer_id' => $data['customer_id'] ?? null,
-                'invoice_number' => $data['invoice_number'] ?? null,
+                'invoice_number' => $invoiceNumber,
                 'sale_date' => $saleDate,
                 'subtotal' => $subtotal,
                 'discount' => $discount,
@@ -224,10 +233,10 @@ final class SaleService
         $this->assertEditablePayload($sale, $data);
 
         return DB::transaction(function () use ($sale, $data): Sale {
+            // `invoice_number` is never written here: it is allocated once, at
+            // creation, and `UpdateSaleRequest` rejects the key outright. It is
+            // listed as guarded below so no future caller can sneak it in.
             $attributes = [];
-            if (array_key_exists('invoice_number', $data)) {
-                $attributes['invoice_number'] = $data['invoice_number'];
-            }
             if (array_key_exists('sale_date', $data)) {
                 $attributes['sale_date'] = Carbon::parse($data['sale_date'])->toDateString();
             }
@@ -265,7 +274,7 @@ final class SaleService
 
     private function assertEditablePayload(Sale $sale, array $data): void
     {
-        foreach (['customer_id', 'cashier_id', 'business_id', 'paid_amount', 'payment_status', 'status', 'due_amount'] as $guarded) {
+        foreach (['customer_id', 'cashier_id', 'business_id', 'paid_amount', 'payment_status', 'status', 'due_amount', 'invoice_number'] as $guarded) {
             if (array_key_exists($guarded, $data)) {
                 throw new BusinessRuleException(self::FINALIZED_MESSAGE);
             }

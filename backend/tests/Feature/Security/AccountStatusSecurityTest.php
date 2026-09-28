@@ -9,6 +9,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Testing\TestResponse;
+use Tests\Feature\Concerns\InteractsWithPosApi;
 use Tests\TestCase;
 
 /**
@@ -27,7 +28,7 @@ use Tests\TestCase;
  */
 class AccountStatusSecurityTest extends TestCase
 {
-    use RefreshDatabase;
+    use InteractsWithPosApi, RefreshDatabase;
 
     private const PASSWORD = 'correct-horse-battery-staple';
 
@@ -40,15 +41,26 @@ class AccountStatusSecurityTest extends TestCase
         $this->business = Business::factory()->create();
     }
 
-    /** A user in the test business with a known password. */
+    /**
+     * A user in the test business with a known password.
+     *
+     * The user is granted the read capabilities the status assertions exercise
+     * (`GET /products` below). This suite is about account *status*, not
+     * authorization, so it must be able to get past the permission gate and be
+     * stopped — or not stopped — by the `active` middleware alone.
+     */
     private function makeUser(string $email = 'cashier@example.com', string $status = User::STATUS_ACTIVE): User
     {
-        return User::factory()->create([
+        $user = User::factory()->create([
             'business_id' => $this->business->id,
             'email' => $email,
             'password' => Hash::make(self::PASSWORD),
             'status' => $status,
         ]);
+
+        $this->grantAllCapabilities($user);
+
+        return $user;
     }
 
     /** POST /auth/login using the fixture's password. */

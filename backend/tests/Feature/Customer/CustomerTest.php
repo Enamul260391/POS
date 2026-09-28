@@ -439,6 +439,10 @@ class CustomerTest extends TestCase
         Sale::create([
             'business_id' => $this->business->id,
             'customer_id' => $customer->id,
+            // Required since invoice numbering became server-owned: a sale
+            // always has a persisted number, so a hand-built fixture must
+            // supply one too.
+            'invoice_number' => 'INV-CUST0001',
             'sale_date' => now()->toDateString(),
         ]);
 

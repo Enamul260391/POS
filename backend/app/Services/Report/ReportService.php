@@ -69,13 +69,41 @@ final class ReportService
         if (($filters['supplier_id'] ?? null) !== null) {
             $query->where('supplier_id', $filters['supplier_id']);
         }
-        $itemQuantity = PurchaseItem::query()->selectRaw('COALESCE(SUM(quantity), 0)')
-            ->whereColumn('purchase_items.purchase_id', 'purchases.id');
+
+        // Item quantity is aggregated in a separate, *uncorrelated* scalar
+        // subquery rather than with a `whereColumn(... = purchases.id)`
+        // correlated selectSub in the select list.
+        //
+        // Why: the outer query is a pure aggregate (COUNT/SUM with no GROUP BY),
+        // so it collapses to a single row in which `purchases.id` is not a value
+        // of any particular purchase. Selecting a subquery correlated to it
+        // mixed a non-aggregated outer column with aggregates, which MySQL and
+        // MariaDB reject under ONLY_FULL_GROUP_BY (SQLSTATE 1140). It was also
+        // ambiguous about intent: correlated, it would have summed the items of
+        // one arbitrary purchase.
+        //
+        // Uncorrelated, it sums the quantities of every item belonging to the
+        // purchases already in scope — the same reading as `purchase_count`,
+        // `purchase_total`, `paid_amount` and `due_amount`, which are all totals
+        // over the filtered set. The inner query is a clone of the already
+        // business-scoped and date/supplier-filtered builder, so the figures
+        // can never describe a different slice than the header totals.
+        //
+        // `purchase_items` has no `business_id` of its own, so the tenant is
+        // carried by the parent id set: only items of this business's purchases
+        // can ever be summed.
+        //
+        // This stays one database-side aggregate — no rows reach PHP.
+        $itemQuantity = PurchaseItem::query()
+            ->selectRaw('COALESCE(SUM(quantity), 0)')
+            ->whereIn('purchase_items.purchase_id', (clone $query)->select('purchases.id'));
+
         $row = $query->selectRaw('COUNT(*) as purchase_count')
             ->selectRaw('COALESCE(SUM(grand_total), 0) as purchase_total')
             ->selectRaw('COALESCE(SUM(paid_amount), 0) as paid_amount')
             ->selectRaw('COALESCE(SUM(due_amount), 0) as due_amount')
             ->selectSub($itemQuantity, 'item_quantity')->first();
+
         return $this->withPeriod($filters, [
             'purchase_count' => (int) $row->purchase_count,
             'purchase_total' => Money::format($row->purchase_total),

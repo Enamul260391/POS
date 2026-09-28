@@ -71,68 +71,241 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
     // -------------------------------------------------------------------------
     // Phase 20 — products, categories and inventory (ledger) endpoints.
     // Phase 21 — customers, suppliers and purchases; purchase stock-ins flow
-    // through the same ledger. Every route requires a valid Sanctum token and
-    // is scoped to the authenticated user's business inside the service layer.
+    // through the same ledger. Phase 23 — expenses, cash drawer, reports.
+    //
+    // Every route requires a valid Sanctum token, an active account and the
+    // business capability for the action, in that order:
+    //
+    //   1. `auth:sanctum` -> 401 for a missing/invalid token.
+    //   2. `active`       -> 401 for a suspended account, revoking its token.
+    //   3. `can:<cap>`    -> 403 for an authenticated user without the
+    //      permission. Abilities are Gates defined once in
+    //      `AppServiceProvider::configurePermissionGates()` and resolved by
+    //      `PermissionService`, so route middleware, controllers and
+    //      `$user->hasPermission()` can never disagree.
+    //
+    // The resources are declared as explicit routes rather than
+    // `Route::apiResource()` precisely because each verb needs its *own*
+    // capability: `apiResource()` applies one middleware stack to all five
+    // verbs, which would either over-grant writes to readers or under-grant
+    // them to editors.
+    //
+    // Tenancy is handled one level down, inside the services: every role,
+    // target user and setting is resolved with the authenticated user's
+    // `business_id`, so another tenant's record is a plain 404. Route
+    // parameters are therefore raw ids — implicit route model binding must
+    // never be able to hand a foreign model to a controller.
     // -------------------------------------------------------------------------
     Route::middleware(['auth:sanctum', 'active'])->group(function () {
         // Categories — full CRUD (GET/POST, GET/PUT/PATCH/DELETE).
-        Route::apiResource('categories', CategoryController::class);
+        Route::get('/categories', [CategoryController::class, 'index'])
+            ->middleware('can:categories.view')
+            ->name('categories.index');
+        Route::post('/categories', [CategoryController::class, 'store'])
+            ->middleware('can:categories.create')
+            ->name('categories.store');
+        Route::get('/categories/{category}', [CategoryController::class, 'show'])
+            ->middleware('can:categories.view')
+            ->name('categories.show');
+        Route::match(['put', 'patch'], '/categories/{category}', [CategoryController::class, 'update'])
+            ->middleware('can:categories.update')
+            ->name('categories.update');
+        Route::delete('/categories/{category}', [CategoryController::class, 'destroy'])
+            ->middleware('can:categories.delete')
+            ->name('categories.destroy');
 
         // Products — full CRUD (GET/POST, GET/PUT/PATCH/DELETE).
-        Route::apiResource('products', ProductController::class);
+        Route::get('/products', [ProductController::class, 'index'])
+            ->middleware('can:products.view')
+            ->name('products.index');
+        Route::post('/products', [ProductController::class, 'store'])
+            ->middleware('can:products.create')
+            ->name('products.store');
+        Route::get('/products/{product}', [ProductController::class, 'show'])
+            ->middleware('can:products.view')
+            ->name('products.show');
+        Route::match(['put', 'patch'], '/products/{product}', [ProductController::class, 'update'])
+            ->middleware('can:products.update')
+            ->name('products.update');
+        Route::delete('/products/{product}', [ProductController::class, 'destroy'])
+            ->middleware('can:products.delete')
+            ->name('products.destroy');
 
         // Customers — full CRUD (GET/POST, GET/PUT/PATCH/DELETE).
-        Route::apiResource('customers', CustomerController::class);
+        Route::get('/customers', [CustomerController::class, 'index'])
+            ->middleware('can:customers.view')
+            ->name('customers.index');
+        Route::post('/customers', [CustomerController::class, 'store'])
+            ->middleware('can:customers.create')
+            ->name('customers.store');
+        Route::get('/customers/{customer}', [CustomerController::class, 'show'])
+            ->middleware('can:customers.view')
+            ->name('customers.show');
+        Route::match(['put', 'patch'], '/customers/{customer}', [CustomerController::class, 'update'])
+            ->middleware('can:customers.update')
+            ->name('customers.update');
+        Route::delete('/customers/{customer}', [CustomerController::class, 'destroy'])
+            ->middleware('can:customers.delete')
+            ->name('customers.destroy');
 
         // Suppliers — full CRUD (GET/POST, GET/PUT/PATCH/DELETE).
-        Route::apiResource('suppliers', SupplierController::class);
+        Route::get('/suppliers', [SupplierController::class, 'index'])
+            ->middleware('can:suppliers.view')
+            ->name('suppliers.index');
+        Route::post('/suppliers', [SupplierController::class, 'store'])
+            ->middleware('can:suppliers.create')
+            ->name('suppliers.store');
+        Route::get('/suppliers/{supplier}', [SupplierController::class, 'show'])
+            ->middleware('can:suppliers.view')
+            ->name('suppliers.show');
+        Route::match(['put', 'patch'], '/suppliers/{supplier}', [SupplierController::class, 'update'])
+            ->middleware('can:suppliers.update')
+            ->name('suppliers.update');
+        Route::delete('/suppliers/{supplier}', [SupplierController::class, 'destroy'])
+            ->middleware('can:suppliers.delete')
+            ->name('suppliers.destroy');
 
         // Purchases — full CRUD; creation posts stock-in movements to the
         // ledger inside one transaction, and updates/deletes of
         // inventory-affecting purchases are refused by the service layer.
-        Route::apiResource('purchases', PurchaseController::class);
+        Route::get('/purchases', [PurchaseController::class, 'index'])
+            ->middleware('can:purchases.view')
+            ->name('purchases.index');
+        Route::post('/purchases', [PurchaseController::class, 'store'])
+            ->middleware('can:purchases.create')
+            ->name('purchases.store');
+        Route::get('/purchases/{purchase}', [PurchaseController::class, 'show'])
+            ->middleware('can:purchases.view')
+            ->name('purchases.show');
+        Route::match(['put', 'patch'], '/purchases/{purchase}', [PurchaseController::class, 'update'])
+            ->middleware('can:purchases.update')
+            ->name('purchases.update');
+        Route::delete('/purchases/{purchase}', [PurchaseController::class, 'destroy'])
+            ->middleware('can:purchases.delete')
+            ->name('purchases.destroy');
 
         // Sales — full CRUD; creation deducts ledger stock in one transaction.
-        Route::apiResource('sales', SaleController::class);
+        Route::get('/sales', [SaleController::class, 'index'])
+            ->middleware('can:sales.view')
+            ->name('sales.index');
+        Route::post('/sales', [SaleController::class, 'store'])
+            ->middleware('can:sales.create')
+            ->name('sales.store');
+        Route::get('/sales/{sale}', [SaleController::class, 'show'])
+            ->middleware('can:sales.view')
+            ->name('sales.show');
+        Route::match(['put', 'patch'], '/sales/{sale}', [SaleController::class, 'update'])
+            ->middleware('can:sales.update')
+            ->name('sales.update');
+        Route::delete('/sales/{sale}', [SaleController::class, 'destroy'])
+            ->middleware('can:sales.delete')
+            ->name('sales.destroy');
+
+        // Recording a payment against a sale is its own capability: taking
+        // money is not the same as being allowed to raise or amend the sale.
         Route::post('/sales/{sale}/payments', [SaleController::class, 'pay'])
+            ->middleware('can:sales.payments.create')
             ->name('sales.payments.store');
 
         // Sale returns — list/create/show; stock restored via ledger.
-        Route::apiResource('sale-returns', SaleReturnController::class)->only(['index', 'store', 'show']);
+        Route::get('/sale-returns', [SaleReturnController::class, 'index'])
+            ->middleware('can:sale_returns.view')
+            ->name('sale-returns.index');
+        Route::post('/sale-returns', [SaleReturnController::class, 'store'])
+            ->middleware('can:sale_returns.create')
+            ->name('sale-returns.store');
+        Route::get('/sale-returns/{sale_return}', [SaleReturnController::class, 'show'])
+            ->middleware('can:sale_returns.view')
+            ->name('sale-returns.show');
 
         // Phase 23 — expenses, cash drawer, read-only reports and dashboard.
         // Route ids are raw values; services resolve them inside the authenticated
         // business so cross-tenant records are indistinguishable from missing ones.
-        Route::apiResource('expense-categories', ExpenseCategoryController::class);
-        Route::apiResource('expenses', ExpenseController::class);
+        Route::get('/expense-categories', [ExpenseCategoryController::class, 'index'])
+            ->middleware('can:expense_categories.view')
+            ->name('expense-categories.index');
+        Route::post('/expense-categories', [ExpenseCategoryController::class, 'store'])
+            ->middleware('can:expense_categories.create')
+            ->name('expense-categories.store');
+        Route::get('/expense-categories/{expense_category}', [ExpenseCategoryController::class, 'show'])
+            ->middleware('can:expense_categories.view')
+            ->name('expense-categories.show');
+        Route::match(['put', 'patch'], '/expense-categories/{expense_category}', [ExpenseCategoryController::class, 'update'])
+            ->middleware('can:expense_categories.update')
+            ->name('expense-categories.update');
+        Route::delete('/expense-categories/{expense_category}', [ExpenseCategoryController::class, 'destroy'])
+            ->middleware('can:expense_categories.delete')
+            ->name('expense-categories.destroy');
 
+        Route::get('/expenses', [ExpenseController::class, 'index'])
+            ->middleware('can:expenses.view')
+            ->name('expenses.index');
+        Route::post('/expenses', [ExpenseController::class, 'store'])
+            ->middleware('can:expenses.create')
+            ->name('expenses.store');
+        Route::get('/expenses/{expense}', [ExpenseController::class, 'show'])
+            ->middleware('can:expenses.view')
+            ->name('expenses.show');
+        Route::match(['put', 'patch'], '/expenses/{expense}', [ExpenseController::class, 'update'])
+            ->middleware('can:expenses.update')
+            ->name('expenses.update');
+        Route::delete('/expenses/{expense}', [ExpenseController::class, 'destroy'])
+            ->middleware('can:expenses.delete')
+            ->name('expenses.destroy');
+
+        // Cash drawer. Reading the shift, opening it and closing it are three
+        // separate capabilities, and a manual cash movement (cash in / cash
+        // out) is a fourth — handled by `cash_registers.manage`.
         Route::post('/cash-registers/open', [CashRegisterController::class, 'open'])
+            ->middleware('can:cash_registers.create')
             ->name('cash-registers.open');
         Route::get('/cash-registers/current', [CashRegisterController::class, 'current'])
+            ->middleware('can:cash_registers.view')
             ->name('cash-registers.current');
         Route::get('/cash-registers/{cashRegister}/transactions', [CashRegisterController::class, 'transactions'])
+            ->middleware('can:cash_registers.view')
             ->name('cash-registers.transactions.index');
         Route::post('/cash-registers/{cashRegister}/transactions', [CashRegisterController::class, 'storeTransaction'])
+            ->middleware('can:cash_registers.manage')
             ->name('cash-registers.transactions.store');
         Route::get('/cash-registers/{cashRegister}/summary', [CashRegisterController::class, 'summary'])
+            ->middleware('can:cash_registers.view')
             ->name('cash-registers.summary');
         Route::get('/cash-registers/{cashRegister}', [CashRegisterController::class, 'show'])
+            ->middleware('can:cash_registers.view')
             ->name('cash-registers.show');
         Route::post('/cash-registers/{cashRegister}/close', [CashRegisterController::class, 'close'])
+            ->middleware('can:cash_registers.update')
             ->name('cash-registers.close');
 
-        Route::get('/reports/sales', [ReportController::class, 'sales'])->name('reports.sales');
-        Route::get('/reports/purchases', [ReportController::class, 'purchases'])->name('reports.purchases');
-        Route::get('/reports/expenses', [ReportController::class, 'expenses'])->name('reports.expenses');
-        Route::get('/reports/profit-loss', [ReportController::class, 'profitLoss'])->name('reports.profit-loss');
-        Route::get('/reports/inventory', [ReportController::class, 'inventory'])->name('reports.inventory');
-        Route::get('/reports/dashboard', [ReportController::class, 'dashboard'])->name('reports.dashboard');
+        // Reports are read-only, so the whole suite shares one capability.
+        Route::get('/reports/sales', [ReportController::class, 'sales'])
+            ->middleware('can:reports.view')
+            ->name('reports.sales');
+        Route::get('/reports/purchases', [ReportController::class, 'purchases'])
+            ->middleware('can:reports.view')
+            ->name('reports.purchases');
+        Route::get('/reports/expenses', [ReportController::class, 'expenses'])
+            ->middleware('can:reports.view')
+            ->name('reports.expenses');
+        Route::get('/reports/profit-loss', [ReportController::class, 'profitLoss'])
+            ->middleware('can:reports.view')
+            ->name('reports.profit-loss');
+        Route::get('/reports/inventory', [ReportController::class, 'inventory'])
+            ->middleware('can:reports.view')
+            ->name('reports.inventory');
+        Route::get('/reports/dashboard', [ReportController::class, 'dashboard'])
+            ->middleware('can:reports.view')
+            ->name('reports.dashboard');
 
         // Inventory — movement log + manual stock adjustment. Stock is only
         // ever written through the ledger, never through a product field.
+        // The log is a read; the adjustment is the `inventory.manage` write.
         Route::get('/stock-movements', [StockMovementController::class, 'index'])
+            ->middleware('can:inventory.view')
             ->name('stock-movements.index');
         Route::post('/products/{product}/stock-adjustments', [StockMovementController::class, 'adjust'])
+            ->middleware('can:inventory.manage')
             ->name('products.stock-adjustments');
     });
 

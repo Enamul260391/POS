@@ -101,7 +101,7 @@ class SaleTest extends TestCase
     /** @test */
     public function list_show_update_delete(): void
     {
-        $id = $this->postJson('/api/v1/sales', $this->payload(['invoice_number' => 'S-1']))->json('data.id');
+        $id = $this->postJson('/api/v1/sales', $this->payload())->json('data.id');
         \App\Models\Sale::factory()->create(['business_id' => $this->otherBusiness->id]);
         $this->assertSame(1, $this->getJson('/api/v1/sales')->json('data.pagination.total'));
         $this->getJson('/api/v1/sales/'.$id)->assertStatus(200)->assertJsonStructure(['data' => ['id', 'items', 'payments']]);

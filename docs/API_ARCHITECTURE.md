@@ -251,9 +251,109 @@ either** slug:
 | `users.roles.update` | `users.roles.update`, `users.manage`, `roles.manage` |
 | `settings.view` | `settings.view`, `settings.manage` |
 | `settings.update` | `settings.update`, `settings.manage` |
+| `categories.view` / `.create` / `.update` / `.delete` | same slug, plus `categories.manage` |
+| `products.view` / `.create` / `.update` / `.delete` | same slug, plus `products.manage` |
+| `inventory.view` | `inventory.view`, `inventory.manage` |
+| `inventory.manage` | `inventory.manage` (stock adjustment) |
+| `customers.view` / `.create` / `.update` / `.delete` | same slug, plus `customers.manage` |
+| `suppliers.view` / `.create` / `.update` / `.delete` | same slug, plus `suppliers.manage` |
+| `purchases.view` / `.create` / `.update` / `.delete` | same slug, plus `purchases.manage` |
+| `sales.view` / `.create` / `.update` / `.delete` | same slug, plus `sales.manage` |
+| `sales.payments.create` | `sales.payments.create`, `sales.manage` |
+| `sale_returns.view` / `.create` | same slug, plus `sale_returns.manage` |
+| `expenses.view` / `.create` / `.update` / `.delete` | same slug, plus `expenses.manage` |
+| `expense_categories.view` / `.create` / `.update` / `.delete` | same slug, plus `expense_categories.manage`, `expenses.manage` |
+| `cash_registers.view` / `.create` / `.update` | same slug, plus `cash_registers.manage` |
+| `cash_registers.manage` | `cash_registers.manage` (cash in / cash out) |
+| `reports.view` | `reports.view` (reports are read-only) |
+
+**The effective rule:** a pre-existing `<resource>.manage` row authorises the
+whole domain, exactly as it did before enforcement. A role seeded with only
+`products.manage` keeps full product access; a role granted the newer
+`products.view` can additionally be restricted to reading. The fine-grained rows
+are an *option*, never a requirement, so no existing installation loses
+functionality.
+
+Two capabilities keep their coarse slug as the canonical name because that row
+already exists and means exactly the right thing: `inventory.manage` (a stock
+adjustment bypasses the purchase/sale flow) and `cash_registers.manage` (a manual
+cash movement). Naming them `inventory.adjust` / `cash_registers.cash_in` would
+add rows that mean the same as one already installed.
+
+`sales.payments.create` is separate from `sales.manage` on purpose: taking money
+is not the same authority as being able to raise or amend a sale, so a cashier
+who may collect payment need not be able to create sales.
 
 `RolesAndPermissionsSeeder` seeds both sets and is idempotent (re-runnable
-without violating the unique indexes on `roles.slug` and `permission_role`).
+without violating the unique indexes on `permissions.slug`, `roles.slug` and
+`permission_role`). Grants are additive: re-seeding adds missing pairs and never
+revokes one.
+
+### Seeded role matrix
+
+`RolesAndPermissionsSeeder` creates `admin`, `manager`, `salesman` and
+`accountant` for every business. **There is no `cashier` role** — the till-facing
+seeded role is `salesman`. The grants below are derived from each role's own
+description in the seeder, using the coarse rows:
+
+| Role | Grants | Description |
+| ---- | ------ | ----------- |
+| `admin` | the entire catalogue | "Full access to all features" |
+| `manager` | products, categories, inventory, sales, sale returns, purchases, customers, suppliers, expenses, cash registers, `reports.view` | "Manage products, sales, purchases, and reports" |
+| `salesman` | products, categories, sales, customers, cash registers | "Handle sales and customer management" |
+| `accountant` | purchases, suppliers, expenses, expense categories, `sales.payments.create`, `reports.view` | "Manage purchases, expenses, and payments" |
+
+The accountant deliberately does **not** receive `sales.manage`: it may take
+payment against a sale without being able to create one.
+
+Before P1-2 these roles were created but granted nothing. That was harmless
+while the operational endpoints accepted any authenticated user; granting them
+their documented capabilities is what keeps enforcement from locking out every
+non-admin user.
+
+### Operational endpoints
+
+Every operational route is `auth:sanctum` + `active` + `can:<capability>`, in
+that order. `GET`/list/detail maps to `*.view`, `POST` to `*.create`, `PUT`/
+`PATCH` to `*.update` and `DELETE` to `*.delete`.
+
+| Domain | Method | Endpoint | Capability |
+| ------ | ------ | -------- | ---------- |
+| Categories | `GET` / `POST` | `/categories` | `categories.view` / `.create` |
+| | `GET` / `PUT` / `DELETE` | `/categories/{id}` | `categories.view` / `.update` / `.delete` |
+| Products | `GET` / `POST` | `/products` | `products.view` / `.create` |
+| | `GET` / `PUT` / `DELETE` | `/products/{id}` | `products.view` / `.update` / `.delete` |
+| Inventory | `GET` | `/stock-movements` | `inventory.view` |
+| | `POST` | `/products/{id}/stock-adjustments` | `inventory.manage` |
+| Customers | `GET` / `POST` | `/customers` | `customers.view` / `.create` |
+| | `GET` / `PUT` / `DELETE` | `/customers/{id}` | `customers.view` / `.update` / `.delete` |
+| Suppliers | `GET` / `POST` | `/suppliers` | `suppliers.view` / `.create` |
+| | `GET` / `PUT` / `DELETE` | `/suppliers/{id}` | `suppliers.view` / `.update` / `.delete` |
+| Purchases | `GET` / `POST` | `/purchases` | `purchases.view` / `.create` |
+| | `GET` / `PUT` / `DELETE` | `/purchases/{id}` | `purchases.view` / `.update` / `.delete` |
+| Sales | `GET` / `POST` | `/sales` | `sales.view` / `.create` |
+| | `GET` / `PUT` / `DELETE` | `/sales/{id}` | `sales.view` / `.update` / `.delete` |
+| | `POST` | `/sales/{id}/payments` | `sales.payments.create` |
+| Sale returns | `GET` / `POST` | `/sale-returns` | `sale_returns.view` / `.create` |
+| | `GET` | `/sale-returns/{id}` | `sale_returns.view` |
+| Expenses | `GET` / `POST` | `/expenses` | `expenses.view` / `.create` |
+| | `GET` / `PUT` / `DELETE` | `/expenses/{id}` | `expenses.view` / `.update` / `.delete` |
+| Expense categories | `GET` / `POST` | `/expense-categories` | `expense_categories.view` / `.create` |
+| | `GET` / `PUT` / `DELETE` | `/expense-categories/{id}` | `expense_categories.view` / `.update` / `.delete` |
+| Cash register | `GET` | `/cash-registers/current`, `/{id}`, `/{id}/summary`, `/{id}/transactions` | `cash_registers.view` |
+| | `POST` | `/cash-registers/open` | `cash_registers.create` |
+| | `POST` | `/cash-registers/{id}/close` | `cash_registers.update` |
+| | `POST` | `/cash-registers/{id}/transactions` | `cash_registers.manage` |
+| Reports | `GET` | `/reports/dashboard`, `/sales`, `/purchases`, `/expenses`, `/profit-loss`, `/inventory` | `reports.view` |
+
+The resources are declared as explicit routes rather than `Route::apiResource()`
+because each verb needs its *own* capability: `apiResource()` applies a single
+middleware stack to all five verbs, which would either over-grant writes to
+readers or under-grant them to editors.
+
+The only routes left on `auth:sanctum` + `active` alone are `/health`
+(public), `/auth/login` (public), `/auth/logout` and `/auth/me` (identity
+infrastructure — there is no business capability to check).
 
 ### 401 vs 403 vs 404
 

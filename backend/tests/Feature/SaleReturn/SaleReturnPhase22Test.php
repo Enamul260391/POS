@@ -103,6 +103,11 @@ class SaleReturnPhase22Test extends TestCase
             'items' => [['product_id' => $this->product->id, 'quantity' => 1, 'unit_price' => 100]],
         ])->json('data');
         $bUser = \App\Models\User::factory()->create(['business_id' => $this->otherBusiness->id]);
+        // Tenant B is fully authorized *in its own business*: it holds every
+        // capability. The 404 asserted below must therefore come from tenant
+        // scoping, not from a missing permission — a 403 here would prove
+        // nothing about isolation.
+        $this->grantAllCapabilities($bUser);
         \Laravel\Sanctum\Sanctum::actingAs($bUser);
 
         $this->getJson('/api/v1/sales/'.$sale['id'])->assertStatus(404);

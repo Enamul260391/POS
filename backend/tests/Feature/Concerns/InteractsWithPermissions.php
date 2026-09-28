@@ -8,7 +8,6 @@ use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Auth;
 
 /**
  * Helpers for building the role/permission fixtures the Phase 24B tests need.
@@ -27,15 +26,19 @@ trait InteractsWithPermissions
      */
     protected function userWithPermissions(array $permissionSlugs, ?int $businessId = null): User
     {
+        // Deliberately *not* `actingAsBusinessUser()`: that helper grants every
+        // capability, which would make these "exactly one permission" fixtures
+        // indistinguishable from a fully privileged user and silently defeat the
+        // 403 assertions this trait exists to support.
         $user = $businessId === null
-            ? $this->actingAsBusinessUser()
+            ? $this->actingAsUnprivilegedUser()
             : User::factory()->create(['business_id' => $businessId]);
 
         $role = Role::create([
             'business_id' => $user->business_id,
             'name' => 'Test Role',
             'slug' => 'test-role-'.$user->getKey(),
-            'description' => 'Role used by the Phase 24B tests.',
+            'description' => 'Role used by the authorization tests.',
         ]);
 
         $role->permissions()->sync(
@@ -58,7 +61,7 @@ trait InteractsWithPermissions
     protected function userWithoutPermissions(?int $businessId = null): User
     {
         $user = $businessId === null
-            ? $this->actingAsBusinessUser()
+            ? $this->actingAsUnprivilegedUser()
             : User::factory()->create(['business_id' => $businessId]);
 
         $this->authenticate($user);
@@ -69,17 +72,10 @@ trait InteractsWithPermissions
     /**
      * Make the given user the identity of every subsequent request.
      *
-     * `Auth::forgetGuards()` is required, not optional: Laravel resolves and
-     * caches the authenticated user for the lifetime of the test, so simply
-     * issuing a new token would keep the *previous* identity active and make
-     * per-permission assertions silently test the wrong user.
+     * `authenticate()` itself lives in `InteractsWithPosApi`; this trait relies
+     * on it, so any class using `InteractsWithPermissions` must also use
+     * `InteractsWithPosApi` (all of them do).
      */
-    protected function authenticate(User $user): void
-    {
-        Auth::forgetGuards();
-
-        $this->withToken($user->createToken('feature-test')->plainTextToken);
-    }
 
     /**
      * Create (or reuse) permissions by slug.
