@@ -17,6 +17,34 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
+    // Realtime (Phase RT-1).
+    //
+    // Loads routes/channels.php and registers the `POST /broadcasting/auth`
+    // endpoint that Echo calls when a client subscribes to a `private-*`
+    // channel; the response is the Pusher-protocol signature Reverb verifies.
+    //
+    // Declared with `withBroadcasting(...)` rather than the shorthand `channels:`
+    // argument of `withRouting(...)` for two reasons:
+    //
+    //  - The shorthand registers `/broadcasting/auth` on the **web** middleware
+    //    stack, which authenticates through a session cookie. This API is
+    //    bearer-token only and deliberately runs no cookie/CSRF flow, so that
+    //    route could never succeed. The middleware below matches the rest of
+    //    the protected API surface exactly.
+    //  - It keeps the new endpoint inside the existing `/api/v1` namespace, so
+    //    the REST contract is untouched and there is exactly one auth route
+    //    rather than a default web one alongside an API one.
+    //
+    // The "may this user join business.{id}?" decision itself lives in
+    // routes/channels.php and is made from the authenticated user's own
+    // business_id - never from anything the browser supplies.
+    ->withBroadcasting(
+        channels: __DIR__.'/../routes/channels.php',
+        attributes: [
+            'prefix' => 'api/v1',
+            'middleware' => ['api', 'auth:sanctum', 'active'],
+        ],
+    )
     ->withMiddleware(function (Middleware $middleware): void {
         // Global CORS — applies to every request; the cors config gates which
         // paths / origins are actually allowed to through.

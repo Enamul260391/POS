@@ -16,14 +16,20 @@ Verified by inspecting the source. Do not provision these:
 
 | Thing | Status | Evidence |
 | --- | --- | --- |
-| Redis | **Not required** | No cache, queue, session or broadcast driver is pointed at Redis. Rate limiting and cache work on the `database`/`file` drivers. |
-| Queue worker | **Not required** | No job classes, no `ShouldQueue`, no `dispatch()` calls anywhere in `app/`. |
+| Redis | **Not required** | Cache, queue and session use the `database`/`file` drivers. Reverb's own `scaling` block is disabled by default (`REVERB_SCALING_ENABLED=false`); it is only needed to run **multiple** Reverb nodes, which this single-instance deployment does not. |
+| Queue worker | **Not required** | No job classes, no `ShouldQueue`, no `dispatch()` calls in `app/`. The realtime events use `ShouldBroadcastNow` **specifically** so they never need one — a queued broadcast would sit unprocessed in the `jobs` table forever. |
 | Scheduler (cron) | **Not required** | No `Schedule::` definitions; `routes/console.php` only defines the stock `inspire` command. |
 | `php artisan storage:link` | **Not required** | No `Storage::` usage and no user-uploaded files in the current application. Do **not** create the link. |
 | Docker / Kubernetes / CI-CD / Sentry / CDN | **Not used** | No such configuration exists in the project. |
 | Email transport | **Not required** | `MAIL_MAILER=log`; the application sends no email. |
 
 If you later add a queued job, an email, or file uploads, revisit this table.
+
+> **New in Phase RT-1:** one *additional long-running process* is required — the
+> Reverb WebSocket server (`php artisan reverb:start`). It is **not** optional in
+> the sense that `composer`/config must be present, but stopping it is safe: every
+> broadcast is wrapped in a guard that logs and swallows failures, so the REST API
+> keeps working unchanged. See §8.
 
 ---
 
@@ -89,6 +95,12 @@ php artisan key:generate          # writes APP_KEY — treat as a secret
 | `CORS_ALLOWED_ORIGINS` | `https://<frontend-host>` | **Required.** See §5. `*` is rejected at boot. |
 | `TRUSTED_PROXIES` | `<proxy-ip>` if behind a proxy | See §5. Leave unset when PHP is reached directly. |
 | `SESSION_SECURE_COOKIE` | leave unset | `config/session.php` auto-marks cookies secure when `APP_ENV=production`. |
+| `BROADCAST_CONNECTION` | `reverb` | **Required.** See §2.3. Never `log` or `null` — both no-op channel authorization. |
+| `REVERB_APP_ID` / `REVERB_APP_KEY` | generated | `php artisan reverb:install`. The key is public (goes in the frontend); the id is not a secret. |
+| `REVERB_APP_SECRET` | secret | **Never commit or expose.** It signs private-channel authorisations. |
+| `REVERB_HOST` | `127.0.0.1` behind the proxy | The **public** Reverb origin the browser connects to. |
+| `REVERB_PORT` | `<reverb-port>` (e.g. `443`) | Must match the port the proxy exposes. |
+| `REVERB_SCHEME` | `https` | **Required in production** — see §8.2. |
 
 ### 2.2 Frontend — `frontend/.env.local` (build-time)
 
@@ -100,9 +112,29 @@ are visible to every user. Never put a secret in one.
 | `NEXT_PUBLIC_API_BASE_URL` | `https://<api-host>/api/v1` |
 | `NEXT_PUBLIC_APP_NAME` | `POS` (or your product name) |
 | `NEXT_PUBLIC_API_TIMEOUT` | `30000` |
+| `NEXT_PUBLIC_REVERB_APP_KEY` | must **equal** the backend's `REVERB_APP_KEY` |
+| `NEXT_PUBLIC_REVERB_HOST` | `wss://<reverb-host>` (no scheme — the scheme is separate) |
+| `NEXT_PUBLIC_REVERB_PORT` | `443` behind a TLS-terminating proxy |
+| `NEXT_PUBLIC_REVERB_SCHEME` | `https` |
 
-No production URL is hardcoded in the source. Changing this variable requires a
-rebuild — it is not a runtime setting.
+No production URL is hardcoded in the source. Changing these variables requires a
+rebuild — they are not runtime settings.
+
+Leaving `NEXT_PUBLIC_REVERB_APP_KEY` empty **disables realtime entirely** and the
+application falls back to plain REST behaviour. That is a valid, supported mode
+(not a broken state) and is how you roll the feature back without a code deploy.
+
+### 2.3 Why the Reverb credentials are split
+
+`REVERB_APP_KEY` is public by design — it ships in the browser bundle and merely
+identifies which Reverb application to talk to, exactly like a Pusher key. The
+**secret** is the part that matters: it signs the `POST /broadcasting/auth`
+response that authorises a subscription to `private-business.{id}`. Anyone
+holding the secret can mint a valid signature for *any* business' channel, so it
+must exist only in the API's environment.
+
+There is deliberately no `NEXT_PUBLIC_REVERB_APP_SECRET`. If one is ever added,
+the tenant boundary is gone.
 
 ---
 
@@ -259,7 +291,100 @@ php artisan view:cache
 
 ---
 
-## 8. Frontend production build
+## 8. Realtime (Reverb WebSocket server) — Phase RT-1
+
+> **Local development** — three processes, all independent:
+>
+> ```bash
+> # terminal 1 — REST API
+> cd backend && php artisan serve
+> # terminal 2 — realtime server
+> cd backend && php artisan reverb:start
+> # terminal 3 — frontend
+> cd frontend && npm run dev
+> ```
+>
+> Any one of them may be stopped. Stopping Reverb costs live updates only:
+> `RealtimeBroadcaster` catches and logs broadcast failures, so REST keeps
+> returning 2xx and the database writes are already committed by then.
+
+### 8.1 What is actually deployed
+
+Reverb is **not** part of the Laravel HTTP request cycle. It is a standalone
+stateful WebSocket server, so it needs its own process, its own port and its own
+supervision. The API only makes an outbound HTTP request to it when broadcasting
+(Reverb speaks the Pusher HTTP protocol for that leg).
+
+| Requirement | Why | Notes |
+| --- | --- | --- |
+| Persistent process | A WebSocket holds long-lived connections; nothing restarts it per request | Supervise it (systemd unit, Supervisor, or a container with a restart policy). A crash silently drops live updates. |
+| Open port | The browser connects to it directly | Either expose it or terminate TLS at a proxy. See §8.2. |
+| WSS + HTTPS | Browsers block `ws://` on an HTTPS page (mixed content) | `REVERB_SCHEME=https`, `NEXT_PUBLIC_REVERB_SCHEME=https`. |
+| `Upgrade`/`Connection` headers | The handshake needs an HTTP/1.1 upgrade | Without them the proxy returns 200 and the socket never opens. |
+| Long read timeout | Idle sockets are dropped by default proxies | `proxy_read_timeout` well above Reverb's `ping_interval` (default 60s). |
+| `REVERB_SCALING_ENABLED=false` | Single node needs no Redis | Only turn on when running **multiple** Reverb nodes; then Redis *does* become required. |
+
+`php artisan reverb:restart` sends a graceful reload and is the intended way to
+apply Reverb config changes.
+
+### 8.2 Reverse proxy
+
+The simplest production shape is a TLS-terminating nginx in front of Reverb on
+loopback, so the socket shares the API's certificate and hostname:
+
+```nginx
+location /app/<reverb-app-key> {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "Upgrade";
+    proxy_set_header Host $host;
+    proxy_read_timeout 120s;   # must exceed REVERB_APP_PING_INTERVAL
+    proxy_send_timeout 120s;
+    proxy_buffering off;
+}
+```
+
+Then set `REVERB_HOST=<reverb-host>`, `REVERB_PORT=443`, `REVERB_SCHEME=https`
+and the matching `NEXT_PUBLIC_REVERB_*`. The `/app/<key>` path prefix is required
+by the Pusher protocol Reverb implements.
+
+Set `TRUSTED_PROXIES` (§5) if the **API** also sits behind that proxy — the
+Reverb outbound request is server-to-server, so rate limiting and client IPs are
+unaffected, but the API's own request handling is.
+
+### 8.3 Failure behaviour (already implemented)
+
+These are properties of the code, verified by tests — not aspirations:
+
+- **Reverb down** → `RealtimeBroadcaster::guard()` logs a warning and swallows
+  the exception. The REST response is unaffected and the write is committed.
+- **Broadcast fails after commit** → same guard. A missed frame is repaired by
+  the client's next `GET`; no client retries a mutation that already succeeded.
+- **Rolled-back transaction** → `ShouldDispatchAfterCommit` + `DB::afterCommit`,
+  so nothing is ever sent for a transaction that did not commit.
+- **Client reconnects** → one authoritative REST refresh per reconnect
+  (`connector.onConnectionChange`), never a timer or a poll.
+- **Realtime unconfigured** → the frontend treats it as disabled and the app runs
+  on REST alone.
+
+### 8.4 Not production-ready yet
+
+Local Reverb working does **not** mean production realtime is ready. Outstanding
+work, deliberately out of scope for Phase RT-1:
+
+- a process-supervisor unit for `reverb:start`;
+- the nginx/WebSocket vhost above, with a certificate;
+- firewall rules for the chosen port;
+- `REVERB_APP_ACCEPT_CLIENT_EVENTS_FROM` — defaults to `members`, which is correct;
+  never set it to `all` unless client events are intentionally allowed;
+- a monitoring check that the socket is actually accepting connections (a stopped
+  Reverb is *silent* — every call still returns 2xx);
+- load/scale testing before enabling Reverb's scaling mode.
+
+---
+
+## 9. Frontend production build
 
 ```bash
 cd frontend
@@ -270,7 +395,7 @@ npm run start          # serves the production build
 
 ---
 
-## 9. Database backup & restore
+## 10. Database backup & restore
 
 > **This is an operational requirement, not something the application
 > implements.** No backup system exists in this codebase, and none was added. It
@@ -300,7 +425,7 @@ tables out of service.
 
 ---
 
-## 10. Logging & monitoring
+## 11. Logging & monitoring
 
 **Application logging (already in place):**
 
@@ -320,7 +445,7 @@ Review this if logging is ever added.
 
 | Signal | Why |
 | --- | --- |
-| API availability | Poll `GET /api/v1/health` (see §11). |
+| API availability | Poll `GET /api/v1/health` (see §12). |
 | 5xx rate | Rising 500s indicate real failures. |
 | 4xx/401 rate | A spike may mean a client bug or credential stuffing. |
 | Latency (p95) | Catches database contention. |
@@ -334,7 +459,7 @@ deliberate choice, not a requirement of this codebase.
 
 ---
 
-## 11. Health check
+## 12. Health check
 
 ```
 GET /api/v1/health   →   200 {"success":true,"message":"API is healthy","data":{"status":"ok"}}
@@ -347,7 +472,7 @@ aggregate queries.
 
 ---
 
-## 12. Web server / reverse proxy
+## 13. Web server / reverse proxy
 
 The application ships **no** nginx/Apache configuration. Provide your own, and
 route:
@@ -364,9 +489,9 @@ Two things people get wrong:
 
 ---
 
-## 13. Pre-flight checklist
+## 14. Pre-flight checklist
 
-- [ ] Backup taken and **restore-tested** (§9)
+- [ ] Backup taken and **restore-tested** (§10)
 - [ ] `composer install --no-dev --optimize-autoloader` completed
 - [ ] `.env` created from `.env.example`; `APP_KEY` generated
 - [ ] `APP_ENV=production`, `APP_DEBUG=false`, `APP_URL=https://<api-host>`
@@ -382,12 +507,25 @@ Two things people get wrong:
 - [ ] `npm ci && npm run build` succeeded
 - [ ] Document root is `backend/public/`
 - [ ] `GET /api/v1/health` returns 200 over HTTPS
-- [ ] Smoke test (§14) passed
-- [ ] Rollback path understood and backup location confirmed (§15)
+- [ ] Smoke test (§15) passed
+- [ ] Rollback path understood and backup location confirmed (§16)
+
+**Realtime (Phase RT-1) — if realtime is enabled:**
+
+- [ ] `BROADCAST_CONNECTION=reverb` (not `log`/`null` — those disable channel auth)
+- [ ] `REVERB_APP_ID` / `REVERB_APP_KEY` / `REVERB_APP_SECRET` set; secret **not** in git
+- [ ] `php artisan reverb:start` supervised as a persistent service, restarts on failure
+- [ ] `REVERB_HOST` / `REVERB_PORT` / `REVERB_SCHEME=https` match what the browser can reach
+- [ ] `NEXT_PUBLIC_REVERB_*` match the backend values (key identical, scheme `https`)
+- [ ] WebSocket `Upgrade`/`Connection` headers present in the proxy; read timeout > 60s
+- [ ] `POST /api/v1/broadcasting/auth` returns **200** for your own business channel
+- [ ] `POST /api/v1/broadcasting/auth` returns **403** for a foreign business channel
+- [ ] Two browsers, same business: a product edit appears in the other without refresh
+- [ ] Killing Reverb does **not** break REST reads or writes (it must stay silent)
 
 ---
 
-## 14. Production smoke test
+## 15. Production smoke test
 
 Run against a **staging or pre-production database first**. Several steps write
 real records; do **not** run them destructively against live production data.
@@ -423,13 +561,13 @@ real records; do **not** run them destructively against live production data.
 
 ---
 
-## 15. Rollback plan
+## 16. Rollback plan
 
 > **Do not blindly run `migrate:rollback` in production.** Rolling a migration
 > back is frequently more destructive than leaving it in place, and it does not
 > undo data written after the migration ran.
 
-**Before deploying, always have a verified backup** (§9). Treat it as mandatory,
+**Before deploying, always have a verified backup** (§10). Treat it as mandatory,
 not optional — at least one migration in this project is not cleanly reversible
 (the `business_id` backfill on `roles`, which by design refuses to guess
 ownership).
@@ -446,7 +584,7 @@ ownership).
 * Prefer restoring from backup over `migrate:rollback` whenever data has been
   written since the migration.
 * If you do roll back, take a fresh backup first, then re-verify with the health
-  check and the smoke test in §14.
+  check and the smoke test in §15.
 
 **Frontend/backend version compatibility:**
 
@@ -461,7 +599,7 @@ ownership).
 
 ---
 
-## 16. Verification status
+## 17. Verification status
 
 Verified in this repository (Windows dev environment, PHP 8.2.33, Node 20.20.2):
 
@@ -527,7 +665,7 @@ pre-existing, and do not affect the build or runtime behaviour.
 
 > Because it does not touch the database, a green health check means "the PHP
 > process is serving requests" — **not** "the database is reachable". Monitor
-> database availability separately (see §10).
+> database availability separately (see §11).
 
 Laravel also exposes `GET /up` (framework health route).
 

@@ -7,6 +7,7 @@ namespace App\Services\Product;
 use App\Models\Product;
 use App\Models\StockMovement;
 use App\Services\Inventory\InventoryService;
+use App\Services\Realtime\RealtimeBroadcaster;
 use App\Support\Quantity;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -53,6 +54,7 @@ final class ProductService
 
     public function __construct(
         private readonly InventoryService $inventory,
+        private readonly RealtimeBroadcaster $realtime,
     ) {}
 
     /**
@@ -126,7 +128,7 @@ final class ProductService
      */
     public function create(int $businessId, ?int $userId, array $data): Product
     {
-        return DB::transaction(function () use ($businessId, $userId, $data): Product {
+        $product = DB::transaction(function () use ($businessId, $userId, $data): Product {
             $product = Product::create([
                 ...$this->masterData($data),
                 'business_id' => $businessId,
@@ -146,6 +148,15 @@ final class ProductService
 
             return $this->find($businessId, $product->id);
         });
+
+        // Announced here, after the transaction has returned — i.e. after it
+        // committed. The event itself is also `ShouldDispatchAfterCommit`, so a
+        // rollback removes it entirely; announcing outside the closure simply
+        // keeps the "created" signal tied to the same commit as the row. The
+        // opening stock, if any, is announced separately by InventoryService.
+        $this->realtime->productCreated($product);
+
+        return $product;
     }
 
     /**
@@ -166,7 +177,11 @@ final class ProductService
             $product->fill($attributes)->save();
         }
 
-        return $this->find($product->business_id, $product->id);
+        $updated = $this->find($product->business_id, $product->id);
+
+        $this->realtime->productUpdated($updated);
+
+        return $updated;
     }
 
     /**
@@ -182,6 +197,11 @@ final class ProductService
     public function delete(Product $product): void
     {
         $product->delete();
+
+        // Announced after the soft delete, and only the identity of what went
+        // away — no client is told anything about carts, baskets or open
+        // sales, because the backend defines no such rule (see ProductDeleted).
+        $this->realtime->productDeleted($product);
     }
 
     /**

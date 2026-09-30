@@ -7,6 +7,7 @@ namespace App\Services\Inventory;
 use App\Exceptions\BusinessRuleException;
 use App\Models\Product;
 use App\Models\StockMovement;
+use App\Services\Realtime\RealtimeBroadcaster;
 use App\Support\Quantity;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -26,6 +27,10 @@ use InvalidArgumentException;
  */
 final class InventoryService
 {
+    public function __construct(
+        private readonly RealtimeBroadcaster $realtime,
+    ) {}
+
     public const DEFAULT_PER_PAGE = 20;
 
     public const MAX_PER_PAGE = 100;
@@ -149,7 +154,7 @@ final class InventoryService
         ?string $referenceType = null,
         ?int $referenceId = null,
     ): StockMovement {
-        return StockMovement::create([
+        $movement = StockMovement::create([
             'business_id' => $product->business_id,
             'product_id' => $product->getKey(),
             'type' => $type,
@@ -159,6 +164,22 @@ final class InventoryService
             'note' => $note,
             'created_by' => $userId,
         ]);
+
+        // Realtime announcement, here and nowhere else.
+        //
+        // This method is the ONLY write path to `stock_movements` — product
+        // opening stock, purchase stock-in, sale stock-out, sale-return
+        // restoration and manual adjustment all funnel through it. Announcing
+        // the change here is what makes the coverage complete by construction:
+        // a future stock-changing flow cannot be forgotten, because it cannot
+        // post a movement without going through this method.
+        //
+        // The announcement is registered, not sent: the balance is read and the
+        // event broadcast only after the enclosing transaction commits, and
+        // never at all if it rolls back. See RealtimeBroadcaster::stockChanged().
+        $this->realtime->stockChanged($product);
+
+        return $movement;
     }
 
     /**
