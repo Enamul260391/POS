@@ -241,6 +241,115 @@ class ApiArchitectureTest extends TestCase
         }
     }
 
+    /**
+     * @test
+     *
+     * Regression test for the production login outage.
+     *
+     * A production deployment that kept the `http://localhost:3000` development
+     * default answers every preflight with
+     * `Access-Control-Allow-Origin: http://localhost:3000`. A real browser sends
+     * `Origin: https://<frontend-host>`, so the check fails and the browser
+     * reports a CORS error for `POST /auth/login` — while Laravel logs nothing
+     * and the API itself is perfectly healthy. It is indistinguishable from a
+     * broken server, so the misconfiguration must be caught at boot instead.
+     */
+    public function production_refuses_to_boot_with_only_loopback_cors_origins(): void
+    {
+        $_ENV['APP_ENV'] = 'production';
+        $_SERVER['APP_ENV'] = 'production';
+        $_ENV['CORS_ALLOWED_ORIGINS'] = 'http://localhost:3000';
+        $_SERVER['CORS_ALLOWED_ORIGINS'] = 'http://localhost:3000';
+
+        try {
+            $this->expectException(RuntimeException::class);
+            $this->expectExceptionMessageMatches('/no real frontend origin/');
+
+            require base_path('config/cors.php');
+        } finally {
+            unset(
+                $_ENV['APP_ENV'], $_SERVER['APP_ENV'],
+                $_ENV['CORS_ALLOWED_ORIGINS'], $_SERVER['CORS_ALLOWED_ORIGINS'],
+            );
+        }
+    }
+
+    /**
+     * @test
+     *
+     * Several loopback entries are still no real origin — the check must look at
+     * every entry in the list, not just the first one.
+     */
+    public function production_still_refuses_when_a_real_origin_is_absent_from_a_longer_list(): void
+    {
+        $_ENV['APP_ENV'] = 'production';
+        $_SERVER['APP_ENV'] = 'production';
+        $_ENV['CORS_ALLOWED_ORIGINS'] = 'http://localhost:3000, http://127.0.0.1:3000';
+        $_SERVER['CORS_ALLOWED_ORIGINS'] = $_ENV['CORS_ALLOWED_ORIGINS'];
+
+        try {
+            $this->expectException(RuntimeException::class);
+            $this->expectExceptionMessageMatches('/no real frontend origin/');
+
+            require base_path('config/cors.php');
+        } finally {
+            unset(
+                $_ENV['APP_ENV'], $_SERVER['APP_ENV'],
+                $_ENV['CORS_ALLOWED_ORIGINS'], $_SERVER['CORS_ALLOWED_ORIGINS'],
+            );
+        }
+    }
+
+    /**
+     * @test
+     *
+     * The guard must not fire once a real origin is present, and must not reject
+     * a deployment that legitimately keeps the local frontend alongside the
+     * production one.
+     */
+    public function production_accepts_a_real_frontend_origin(): void
+    {
+        $_ENV['APP_ENV'] = 'production';
+        $_SERVER['APP_ENV'] = 'production';
+        $_ENV['CORS_ALLOWED_ORIGINS'] = 'http://localhost:3000, https://pos.example.com';
+        $_SERVER['CORS_ALLOWED_ORIGINS'] = $_ENV['CORS_ALLOWED_ORIGINS'];
+
+        try {
+            $origins = require base_path('config/cors.php');
+
+            $this->assertSame(
+                ['http://localhost:3000', 'https://pos.example.com'],
+                $origins['allowed_origins'],
+            );
+        } finally {
+            unset(
+                $_ENV['APP_ENV'], $_SERVER['APP_ENV'],
+                $_ENV['CORS_ALLOWED_ORIGINS'], $_SERVER['CORS_ALLOWED_ORIGINS'],
+            );
+        }
+    }
+
+    /**
+     * @test
+     *
+     * Outside production the development default must keep working untouched —
+     * the guard exists for deployments, not for `php artisan serve`.
+     */
+    public function local_development_keeps_the_localhost_cors_default(): void
+    {
+        $_ENV['APP_ENV'] = 'local';
+        $_SERVER['APP_ENV'] = 'local';
+        unset($_ENV['CORS_ALLOWED_ORIGINS'], $_SERVER['CORS_ALLOWED_ORIGINS']);
+
+        try {
+            $origins = require base_path('config/cors.php');
+
+            $this->assertSame(['http://localhost:3000'], $origins['allowed_origins']);
+        } finally {
+            unset($_ENV['APP_ENV'], $_SERVER['APP_ENV']);
+        }
+    }
+
     /** @test */
     public function session_cookies_are_secure_by_default_in_production(): void
     {

@@ -90,7 +90,7 @@ php artisan key:generate          # writes APP_KEY — treat as a secret
 | `TRUSTED_PROXIES` | `<proxy-ip>` if behind a proxy | See §5. Leave unset when PHP is reached directly. |
 | `SESSION_SECURE_COOKIE` | leave unset | `config/session.php` auto-marks cookies secure when `APP_ENV=production`. |
 
-### 2.2 Frontend — `frontend/.env.local` (build-time)
+### 2.2 Frontend — `frontend/.env.production` (build-time)
 
 `NEXT_PUBLIC_*` values are **inlined into the browser bundle at build time** and
 are visible to every user. Never put a secret in one.
@@ -103,6 +103,11 @@ are visible to every user. Never put a secret in one.
 
 No production URL is hardcoded in the source. Changing this variable requires a
 rebuild — it is not a runtime setting.
+
+**Do not put the production API URL in `frontend/.env.local`.** That file is loaded
+during `next build` *and* outranks `.env.production`, so it silently wins and ships
+a bundle pointing at the developer's localhost. Use `.env.development.local` for
+local values — see §5 for the full precedence table.
 
 ---
 
@@ -178,16 +183,67 @@ when `APP_ENV=production`.
 
 ### CORS
 
-* Set `CORS_ALLOWED_ORIGINS` to the **exact production frontend origin**, e.g.
-  `https://<frontend-host>`. Multiple origins: comma-separated (whitespace is
-  trimmed automatically).
+The API and the frontend are **different origins**, so every browser request is
+cross-origin and must pass a preflight. Both ends must be configured or login
+fails in the browser while the API itself is healthy.
+
+| Where | Variable | Must be |
+| --- | --- | --- |
+| Backend | `CORS_ALLOWED_ORIGINS` | the **frontend** origin, `https://<frontend-host>` |
+| Frontend | `NEXT_PUBLIC_API_BASE_URL` | the **API** origin, `https://<api-host>/api/v1` |
+
+They are different hosts. Setting `CORS_ALLOWED_ORIGINS` to the API's own origin
+is the single most common cause of a login screen that "does nothing".
+
+* Multiple origins: comma-separated (whitespace is trimmed automatically).
 * **`*` is rejected at boot with a clear error.** `config/cors.php` enables
   `supports_credentials`, and the CORS specification forbids a wildcard origin
   combined with credentials — so a wildcard would fail in the browser with no
   server-side clue. Failing loudly at boot is intentional.
-* If the value is left at the `http://localhost:3000` default, the real frontend
-  is simply **blocked**. That is fail-safe, not fail-open.
-* Local development (`http://localhost:3000`) keeps working unchanged.
+* **A localhost-only list is also rejected at boot when `APP_ENV=production`.**
+  This was a real outage: the API kept the `http://localhost:3000` default, every
+  preflight was answered with `Access-Control-Allow-Origin: http://localhost:3000`,
+  and `https://<frontend-host>` never matched. The browser reported a CORS error
+  for `POST /api/v1/auth/login`, and Laravel logged nothing at all.
+* Local development (`http://localhost:3000`) keeps working unchanged — the guard
+  only applies to `APP_ENV=production`.
+
+### The `.env.local` trap (read this before building)
+
+Next.js resolves env files in this order, **first match wins**:
+
+| # | Source | Loaded during `next build`? |
+| --- | --- | --- |
+| 1 | real environment variables (CI/CD) | yes |
+| 2 | `.env.$NODE_ENV.local` | yes |
+| 3 | **`.env.local`** | **yes — and it outranks `.env.production`** |
+| 4 | `.env.$NODE_ENV` (`.env.production`) | yes |
+| 5 | `.env` | yes |
+
+Because `.env.local` is loaded in production **and** takes priority over
+`.env.production`, a developer's local file silently overrides the production API
+URL. The build succeeds, the bundle ships pointing at `http://localhost:8000`, and
+the browser fails every request with an error that points at CORS rather than at
+the real cause.
+
+This project therefore uses:
+
+| File | Purpose |
+| --- | --- |
+| `.env.development.local` | local development values (`next dev` only) |
+| `.env.production` | production values (`next build`) |
+| `.env` | shared, environment-independent values |
+
+`next.config.ts` enforces this: a **production** build whose
+`NEXT_PUBLIC_API_BASE_URL` is unset, not `https://`, or points at localhost
+**fails the build** with a message naming the variable. Set
+`NEXT_PUBLIC_ALLOW_LOCAL_API=1` to deliberately build against a local API.
+
+Verify after building — the wrong URL is otherwise invisible:
+
+```bash
+grep -r "localhost:8000" .next/static/chunks/   # must print nothing
+```
 
 ### Reverse proxy / `TRUSTED_PROXIES`
 
@@ -559,8 +615,8 @@ default is not the one you get by accident.
   this application does not enable. It is present for completeness only.
 * The authentication architecture was **not** changed in this phase.
 
-* `frontend/.env.local` — ignored by `frontend/.gitignore` (`.env*` with
-  `!.env.example`).
+* `frontend/.env.development.local` and `frontend/.env.production` — ignored by
+  `frontend/.gitignore` (`.env*` with `!.env.example`).
 * Only `.env.example` files are committed. They contain **no real secrets** —
   `APP_KEY` is blank and `DB_PASSWORD` is empty.
 * **If a secret is ever committed, rotate it.** Rewriting history does not

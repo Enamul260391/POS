@@ -32,6 +32,24 @@ return [
     // The list is trimmed and empty entries are discarded so a trailing comma
     // or a stray space cannot silently turn into a blank origin.
     'allowed_origins' => (static function (): array {
+        // A loopback origin is only ever meaningful on a developer's machine: no
+        // real browser sends `Origin: http://localhost:3000` to a public site. An
+        // entry with no parseable host (a bare "example.com", a stray token left
+        // over from a bad edit) cannot be proven to be a real origin either, so it
+        // counts as untrusted here.
+        $isLoopbackOrigin = static function (string $origin): bool {
+            $host = parse_url($origin, PHP_URL_HOST);
+
+            if (! is_string($host) || $host === '') {
+                return true;
+            }
+
+            $host = strtolower(trim($host, '[]'));
+
+            return in_array($host, ['localhost', '127.0.0.1', '::1', '0.0.0.0'], true)
+                || str_ends_with($host, '.localhost');
+        };
+
         $configured = (string) env('CORS_ALLOWED_ORIGINS', 'http://localhost:3000');
 
         $origins = array_values(array_filter(
@@ -51,6 +69,37 @@ return [
                 .'supports_credentials. List the explicit frontend origin(s) instead, '
                 .'e.g. CORS_ALLOWED_ORIGINS=https://your-frontend-host.',
             );
+        }
+
+        // The specific failure this guards against: a production deployment that
+        // kept the `http://localhost:3000` development default. Every preflight
+        // is then answered with `Access-Control-Allow-Origin: http://localhost:3000`,
+        // which the real frontend origin never matches, so the browser reports a
+        // CORS error instead of the HTTP status the API actually returned — the
+        // login screen looks broken while the API is perfectly healthy. There is
+        // no safe fallback for this case, so the only correct action is to refuse
+        // to boot and name the variable to set.
+        if (env('APP_ENV') === 'production') {
+            $hasRealOrigin = (static function (array $origins) use ($isLoopbackOrigin): bool {
+                foreach ($origins as $origin) {
+                    if (! $isLoopbackOrigin($origin)) {
+                        return true;
+                    }
+                }
+
+                return false;
+            })($origins);
+
+            if (! $hasRealOrigin) {
+                throw new RuntimeException(
+                    'CORS_ALLOWED_ORIGINS lists no real frontend origin while APP_ENV=production. '
+                    .'A browser sends its own origin (e.g. https://pos.example.com), which never '
+                    .'matches a localhost entry, so every cross-origin request — login included — is '
+                    .'blocked before it reaches the controller. Set CORS_ALLOWED_ORIGINS to the exact '
+                    .'production frontend origin(s), comma-separated, '
+                    .'e.g. CORS_ALLOWED_ORIGINS=https://pos.example.com.',
+                );
+            }
         }
 
         return $origins;
