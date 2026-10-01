@@ -279,9 +279,10 @@ grep -r "localhost:8000" .next/static/chunks/   # must print nothing
 
 ### Reverse proxy / `TRUSTED_PROXIES`
 
-Rate limiting keys on `$request->ip()` (`AppServiceProvider`). Behind a reverse
-proxy without this setting, every user shares one throttle bucket and a single
-mistyped password locks out the whole store.
+Both rate limiters key on `$request->ip()` (`AppServiceProvider` for the `api`
+flood guard, `App\Support\LoginThrottle` for the failed-sign-in lockout).
+Behind a reverse proxy without this setting, every user shares one throttle
+bucket and a single mistyped password locks out the whole store.
 
 ```
 TRUSTED_PROXIES=127.0.0.1              # single proxy
@@ -291,6 +292,30 @@ TRUSTED_PROXIES=10.0.0.1,10.0.0.2      # two proxies
 Leave it **unset** when PHP-FPM is reached directly. Never use `*` unless the app
 is reachable *only* through a proxy you control — a spoofed `X-Forwarded-For`
 would then be trusted for rate limiting. This is opt-in precisely so the unsafe
+default cannot happen by omission.
+
+### Rate limiting
+
+`config/rate-limiting.php`, tunable from `.env`. No Redis required — the
+default cache store (`file` or `database`) is used.
+
+| Variable | Default | Purpose |
+| -------- | ------- | ------- |
+| `API_RATE_LIMIT_PER_MINUTE` | `120` | Flood guard on the whole `api` group. Counts every request. |
+| `LOGIN_RATE_LIMIT_MAX_ATTEMPTS` | `5` | Wrong passwords for one account + IP. |
+| `LOGIN_RATE_LIMIT_DECAY_SECONDS` | `60` | Window for the two values above. |
+| `LOGIN_IP_RATE_LIMIT_MAX_ATTEMPTS` | `20` | Wrong passwords from one IP, across all accounts. |
+| `LOGIN_IP_RATE_LIMIT_DECAY_SECONDS` | `60` | Window for the IP bucket. |
+
+> **A `429` on the login screen is usually not a bug.** Only *failed* sign-ins
+> count, and a successful sign-in clears the counter, so a cashier who mistypes
+> their password and then types it correctly is never locked out. If a correct
+> password is being refused, check `storage/logs/laravel.log` for the `Retry-After`
+> value in the response and confirm `TRUSTED_PROXIES` is set correctly for your
+> topology.
+
+After changing any of these, run `php artisan config:clear` (or
+`php artisan config:cache` in production) so the new values take effect.
 
 ---
 

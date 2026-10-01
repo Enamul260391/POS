@@ -424,6 +424,38 @@ final class PermissionService
     }
 
     /**
+     * Every capability the user satisfies, as capability names.
+     *
+     * Used by `UserResource` to tell the client what it may reach, so the UI can
+     * hide a module before a request is ever made instead of reacting to the
+     * `403` afterwards.
+     *
+     * Capability *names* are returned — not the raw permission slugs held through
+     * the user's roles — so the client compares one value against another
+     * (`users.view`) and never has to re-implement the alias resolution of
+     * {@see self::CAPABILITIES} (`users.manage` satisfying `users.view`). That
+     * mapping therefore stays in exactly one place and cannot drift between the
+     * server's Gate and the client's own idea of the rules.
+     *
+     * `permissionSlugs()` is memoised on the model instance, so the whole list
+     * costs at most one query, however many capabilities are tested.
+     *
+     * @return array<int, string>
+     */
+    public function resolvedCapabilities(User $user): array
+    {
+        $granted = [];
+
+        foreach (self::ALL_CAPABILITIES as $capability) {
+            if ($this->grants($user, $capability)) {
+                $granted[] = $capability;
+            }
+        }
+
+        return $granted;
+    }
+
+    /**
      * Paginated permission catalogue with search.
      *
      * The catalogue is global, so no tenant scoping applies here.

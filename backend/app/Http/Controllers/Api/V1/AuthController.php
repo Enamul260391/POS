@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Resources\UserResource;
 use App\Services\Auth\AuthService;
+use App\Support\LoginThrottle;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -30,17 +31,48 @@ class AuthController extends Controller
 
     /**
      * Authenticate the user and return a Sanctum API token.
+     *
+     * Failed-sign-in accounting lives here rather than in a `throttle:`
+     * middleware, because only this method knows whether the attempt actually
+     * failed. See {@see LoginThrottle} for why a middleware limiter locks out
+     * legitimate cashiers.
+     *
+     * The order matters:
+     *
+     *   1. lockout check  — before any password hashing, so a locked-out caller
+     *                      cannot burn server CPU with bcrypt
+     *   2. authenticate   — {@see AuthService} answers `null` for every failure
+     *   3. record         — a failure hits both buckets; a success clears them
+     *
+     * The address and IP are read once and reused, so the key that is checked
+     * is provably the same key that is later recorded against.
      */
     public function login(LoginRequest $request): JsonResponse
     {
+        $email = (string) $request->input('email');
+        $ip = (string) $request->ip();
+
+        if (LoginThrottle::tooManyAttempts($email, $ip)) {
+            return LoginThrottle::tooManyAttemptsResponse($email, $ip);
+        }
+
         $result = $this->authService->login(
-            $request->input('email'),
-            $request->input('password'),
+            $email,
+            (string) $request->input('password'),
         );
 
         if (! $result) {
+            // Every refusal is counted identically — unknown address, wrong
+            // password and suspended account alike — so the endpoint cannot be
+            // used to discover which addresses are registered.
+            LoginThrottle::recordFailure($email, $ip);
+
             return $this->error('Invalid credentials', [], 401);
         }
+
+        // A correct password proves the earlier failures were not an attack, so
+        // the budget is restored and the next sign-in is not throttled.
+        LoginThrottle::recordSuccess($email, $ip);
 
         return $this->success([
             'token' => $result['token'],

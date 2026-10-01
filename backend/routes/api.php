@@ -50,14 +50,18 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
     Route::get('/health', HealthController::class)->name('health');
 
     Route::prefix('auth')->name('auth.')->group(function () {
-        // Public authentication route. `throttle:login` is a dedicated,
-        // much tighter limiter than the `api` group default (see
-        // AppServiceProvider) and bounds credential guessing per account+IP.
-        // It runs ahead of the form request, so even a payload that fails
-        // validation still consumes an attempt and cannot be used to probe the
-        // endpoint for free.
+        // Public authentication route.
+        //
+        // The failed-sign-in lockout is enforced inside AuthController (see
+        // App\Support\LoginThrottle) rather than by a `throttle:login`
+        // middleware. A throttle middleware counts *every* request, so it would
+        // charge a successful sign-in against the same budget as a wrong
+        // password and could never restore the budget after one — locking out
+        // cashiers who type the correct password.
+        //
+        // The route still carries the `api` group's own `throttle:api` flood
+        // guard, so an unauthenticated flood is bounded regardless.
         Route::post('/login', [AuthController::class, 'login'])
-            ->middleware('throttle:login')
             ->name('login');
 
         // Protected routes — require a valid Sanctum API token and an account

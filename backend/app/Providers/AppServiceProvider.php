@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Models\User;
 use App\Services\Permission\PermissionService;
+use App\Support\LoginThrottle;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -12,40 +13,6 @@ use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
-    /**
-     * Number of API requests allowed per minute, per user (or per IP address
-     * for unauthenticated callers such as the login endpoint).
-     *
-     * Deliberately generous: it protects the API from runaway clients without
-     * getting in the way of normal POS usage or local development. Per-tenant
-     * or per-endpoint limits can be layered on in later phases.
-     */
-    protected const API_RATE_LIMIT_PER_MINUTE = 120;
-
-    /**
-     * Failed-login attempts allowed per minute, keyed by email *and* IP.
-     *
-     * The generic `api` limiter allows 120 requests a minute, which is far too
-     * generous to slow a credential-stuffing run against a single account.
-     * This limiter is deliberately tight and is applied only to
-     * `POST /auth/login`; `throttle:login` is a separate limiter, so a caller
-     * that trips it cannot lock out ordinary authenticated API traffic.
-     *
-     * The key combines the submitted address with the client IP so that one
-     * attacker cannot exhaust a victim's quota, while a distributed attempt
-     * from many addresses still has to clear the per-IP half of the key.
-     */
-    protected const LOGIN_RATE_LIMIT_PER_MINUTE = 5;
-
-    /**
-     * Length of the login throttle window in seconds.
-     *
-     * Long enough to make an online guessing attack impractical, short enough
-     * that a legitimate user who fat-fingers their password a few times is not
-     * locked out of the till for the rest of the shift.
-     */
-    protected const LOGIN_RATE_LIMIT_DECAY_SECONDS = 60;
-
     /**
      * Register any application services.
      */
@@ -66,30 +33,40 @@ class AppServiceProvider extends ServiceProvider
     /**
      * Register the rate limiters used by the application.
      *
-     * The `api` limiter backs the `throttle:api` middleware that
-     * `bootstrap/app.php` prepends to the api middleware group. Requests are
-     * keyed by the authenticated user when available, otherwise by IP address
-     * (the login and health endpoints are public).
+     * Only the `api` limiter lives here. It backs the `throttle:api` middleware
+     * that `bootstrap/app.php` prepends to the api middleware group, and counts
+     * *every* request keyed by the authenticated user when available, otherwise
+     * by IP address (the login and health endpoints are public).
+     *
+     * The limits come from `config/rate-limiting.php` so they are tunable from
+     * `.env` without editing PHP. They degrade to the documented defaults if a
+     * value is missing or non-positive — a limit of zero would lock every
+     * caller out permanently.
+     *
+     * There is deliberately **no** named login limiter here. The failed-sign-in
+     * lockout is owned by {@see LoginThrottle} and applied in
+     * `AuthController`, because it must count only failed attempts and be
+     * cleared by a success — neither of which a `throttle:` middleware can do.
      */
     protected function configureRateLimiting(): void
     {
         RateLimiter::for('api', function (Request $request): Limit {
-            return Limit::perMinute(static::API_RATE_LIMIT_PER_MINUTE)
+            $maxAttempts = $this->positiveLimit('rate-limiting.api.max_attempts', 120);
+            $decayMinutes = $this->positiveLimit('rate-limiting.api.decay_minutes', 1);
+
+            return Limit::perMinutes($decayMinutes, $maxAttempts)
                 ->by($request->user()?->getAuthIdentifier() ?: $request->ip());
         });
+    }
 
-        // Credential-guessing protection for `POST /auth/login`, which is
-        // unauthenticated and therefore only ever covered by the generous
-        // `api` limit above. The key is the lower-cased submitted address plus
-        // the client IP, so a burst of guesses is bounded per account *and* per
-        // source, and the response is the standard `429` envelope rendered by
-        // `ApiExceptionRenderer`.
-        RateLimiter::for('login', function (Request $request): Limit {
-            $email = strtolower(trim((string) $request->input('email')));
+    /**
+     * Read a rate limit from config, falling back when it is not usable.
+     */
+    private function positiveLimit(string $key, int $default): int
+    {
+        $value = (int) config($key, $default);
 
-            return Limit::perMinutes(static::LOGIN_RATE_LIMIT_DECAY_SECONDS, static::LOGIN_RATE_LIMIT_PER_MINUTE)
-                ->by($email.'|'.$request->ip());
-        });
+        return $value > 0 ? $value : $default;
     }
 
     /**

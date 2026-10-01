@@ -52,6 +52,9 @@ class AuthService
     public function login(string $email, string $password): ?array
     {
         // Look up the user with roles eager-loaded to avoid N+1 in the resource.
+        // `permissions` is not eager-loaded: it is a memoised accessor rather
+        // than a relation, so `with()` cannot hydrate it. Calling it here
+        // populates the cache that `UserResource` and the Gate then share.
         $user = User::with('roles')
             ->where('email', $email)
             ->first();
@@ -162,10 +165,21 @@ class AuthService
     }
 
     /**
-     * Reload the authenticated user (with roles) for the "me" endpoint.
+ * Reload the authenticated user (with roles) for the "me" endpoint.
+     *
+     * `permissions` is deliberately *not* eager-loaded. It is a plain accessor
+     * returning an already-built collection, not an Eloquent relation, so
+     * `load()` cannot use it and would fail with `addEagerConstraints`. Calling
+     * it once below is what matters: `UserResource` then reads the memoised
+     * relation, so the capability list costs a single query and every later
+     * `permissionSlugs()` check reuses it.
      */
     public function getCurrentUser(User $user): User
     {
-        return $user->load('roles');
+        $user->load('roles');
+
+        $user->permissions();
+
+        return $user;
     }
 }

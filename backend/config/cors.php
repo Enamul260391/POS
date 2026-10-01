@@ -113,7 +113,12 @@ return [
     'allowed_headers' => ['*'],
 
     // Headers the browser is allowed to read in the response.
-    'exposed_headers' => [],
+    //
+    // `Retry-After` and the `X-RateLimit-*` trio must be listed or the browser
+    // hides them from `fetch`/XHR: a cross-origin response only exposes the
+    // CORS-safelisted headers unless they are named here. Without this the
+    // frontend cannot tell a cashier how long a `429` lockout actually lasts.
+    'exposed_headers' => ['Retry-After', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset'],
 
     // How long the browser may cache the preflight response.
     'max_age' => 0,

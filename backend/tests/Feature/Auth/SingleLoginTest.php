@@ -313,9 +313,13 @@ class SingleLoginTest extends TestCase
     /**
      * @test
      *
-     * The login throttle still runs ahead of everything the service does, so
-     * repeated logins stay capped per account+IP and the new revocation step
-     * cannot turn the endpoint into an unlimited token minter.
+     * Failed sign-ins stay capped per account+IP, so the revocation step cannot
+     * turn the endpoint into an unlimited token minter.
+     *
+     * The full behaviour — successes are not charged, a success restores the
+     * budget, e-mail rotation is bounded by a per-IP bucket — is covered by
+     * LoginThrottleTest. This keeps the guarantee that the throttle runs ahead
+     * of the token minting.
      */
     public function login_rate_limiting_still_applies(): void
     {

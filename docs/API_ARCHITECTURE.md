@@ -199,13 +199,56 @@ Directories are created when the domain is implemented — not in advance.
 
 ## 7. Rate Limiting
 
+Two independent mechanisms, deliberately different in kind. Both are configured
+in `config/rate-limiting.php` and tunable from `.env`. Redis is **not** required —
+both use the default cache store (`file` or `database`).
+
+### 7.1 API flood guard — `throttle:api`
+
 * `bootstrap/app.php` applies `throttle:api` to the whole `api` middleware group.
 * The `api` limiter is defined in `AppServiceProvider::configureRateLimiting()`:
   **120 requests / minute**, keyed by authenticated user id, falling back to IP
   address for public endpoints.
-* Exceeding it returns `429 { "success": false, "message": "Too many requests", "errors": {} }`.
-* Redis throttling is intentionally not enabled; the single tuning point is the
-  `API_RATE_LIMIT_PER_MINUTE` constant.
+* Counts **every** request, successful or not. It exists to stop a runaway
+  client, not a human, so it is generous by design.
+* Tuning: `API_RATE_LIMIT_PER_MINUTE`, `API_RATE_LIMIT_DECAY_MINUTES`.
+
+### 7.2 Failed sign-in lockout — `App\Support\LoginThrottle`
+
+Applied inside `AuthController::login()` (plus two hooks on `LoginRequest` for
+the pre-validation path), **not** as a `throttle:` middleware.
+
+The reason is that Laravel's `ThrottleRequests` middleware charges *every*
+request it sees, so a middleware-based login limiter bills a **successful**
+sign-in against the same budget as a wrong password, and can never refund it.
+A cashier signing out and back in, or reloading the app, was therefore locked
+out with a *correct* password. Only the controller knows the outcome, so the
+accounting lives there.
+
+| Property | Behaviour |
+| -------- | --------- |
+| Counts | Failed sign-ins only. A success is never charged. |
+| Refund | A successful sign-in **clears** the counter, so a mistyped password never outlives the success that followed it. |
+| Buckets | Two, evaluated independently (stricter wins):<br>• **account** — e-mail + IP → 5 / 60 s<br>• **ip** — IP alone → 20 / 60 s |
+| E-mail rotation | Defeated by the per-IP bucket. A per-account key alone is trivially bypassed by varying the address. |
+| A `422` | Charged like a wrong password, so the endpoint cannot be probed for free with malformed payloads. |
+| Locked out | Refused **before** the password is hashed, so a locked-out caller cannot burn server CPU with bcrypt. |
+| Response | `429 { "success": false, "message": "Too many failed sign-in attempts. Try again in N seconds.", "errors": {} }` plus a `Retry-After` header. |
+
+Tuning: `LOGIN_RATE_LIMIT_MAX_ATTEMPTS`, `LOGIN_RATE_LIMIT_DECAY_SECONDS`,
+`LOGIN_IP_RATE_LIMIT_MAX_ATTEMPTS`, `LOGIN_IP_RATE_LIMIT_DECAY_SECONDS`.
+Do not raise the per-account limit above 10 or drop its decay below 30 s.
+
+`Retry-After` and the `X-RateLimit-*` headers are listed in
+`config/cors.php → exposed_headers`; without that a cross-origin browser cannot
+read them.
+
+### 7.3 Failure envelope
+
+* Exceeding either limiter returns the standard `429` envelope.
+* Covered by `tests/Feature/Auth/LoginThrottleTest.php` — the lockout is
+  failure-only, is refunded by a success, and cannot be escaped by rotating
+  e-mail addresses.
 
 ---
 
