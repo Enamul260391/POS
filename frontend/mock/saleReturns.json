@@ -1,0 +1,34 @@
+[
+  {
+    "id": 1,
+    "reference": "RET-20260922-001",
+    "saleId": 5,
+    "invoiceNumber": "INV-20260919-005",
+    "customerId": 4,
+    "customerName": "Nusrat Jahan",
+    "items": [
+      {
+        "id": 1,
+        "returnId": 1,
+        "saleItemId": 17,
+        "productId": 22,
+        "productName": "Red Lentil (Masoor Dal) 1kg",
+        "sku": "GRO-DAL-MAS-1",
+        "unit": "pack",
+        "quantity": 1,
+        "unitPrice": 165,
+        "refundAmount": 173.25,
+        "reason": "damaged",
+        "restocked": false
+      }
+    ],
+    "refundTotal": 173.25,
+    "refundMethod": "mobile_banking",
+    "refundProvider": "bKash",
+    "note": "Customer brought one packet back damaged; refunded to bKash.",
+    "processedBy": "Sumaiya Akter",
+    "returnedAt": "2026-09-22T15:10:00.000Z",
+    "createdAt": "2026-09-22T15:10:00.000Z",
+    "updatedAt": "2026-09-22T15:10:00.000Z"
+  }
+]

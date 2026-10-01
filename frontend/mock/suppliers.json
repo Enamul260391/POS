@@ -1,0 +1,74 @@
+[
+  {
+    "id": 1,
+    "name": "Metro Beverage Depot",
+    "contactPerson": "Shafiqul Islam",
+    "phone": "+8801711000111",
+    "email": "sales@metrobeverage.com.bd",
+    "address": "Tejgaon ICD, Dhaka",
+    "dueAmount": 0,
+    "notes": "Primary drinks supplier — next day delivery.",
+    "createdAt": "2025-11-10T09:00:00.000Z",
+    "updatedAt": "2026-09-05T09:30:00.000Z"
+  },
+  {
+    "id": 2,
+    "name": "Chattogram Food Traders",
+    "contactPerson": "Nurul Absar",
+    "phone": "+8801811000222",
+    "email": "info@ctgfoodtraders.com",
+    "address": "Agrabad Commercial Area, Chattogram",
+    "dueAmount": 6006,
+    "notes": "Credit terms: 15 days.",
+    "createdAt": "2025-12-01T10:30:00.000Z",
+    "updatedAt": "2026-09-12T11:00:00.000Z"
+  },
+  {
+    "id": 3,
+    "name": "Dhaka Bakery Supplies",
+    "contactPerson": "Rehana Parvin",
+    "phone": "+8801911000333",
+    "email": "orders@dhakabakery.bd",
+    "address": "Mirpur 1, Dhaka",
+    "dueAmount": 0,
+    "notes": "Fresh bread every morning, order by 18:00.",
+    "createdAt": "2025-12-15T08:15:00.000Z",
+    "updatedAt": "2026-09-15T07:45:00.000Z"
+  },
+  {
+    "id": 4,
+    "name": "Fresh Dairy Collective",
+    "contactPerson": "Abdul Hai",
+    "phone": "+8801611000444",
+    "email": null,
+    "address": "Savar Dairy Farm, Dhaka",
+    "dueAmount": 3034,
+    "notes": "Cash on delivery preferred; balance carried forward.",
+    "createdAt": "2026-01-05T07:00:00.000Z",
+    "updatedAt": "2026-09-18T06:30:00.000Z"
+  },
+  {
+    "id": 5,
+    "name": "National Grocery Wholesalers",
+    "contactPerson": "Mahbub Alam",
+    "phone": "+8801511000555",
+    "email": "purchase@natlgrocery.com",
+    "address": "Keraniganj, Dhaka",
+    "dueAmount": 5434,
+    "notes": "Bulk dry goods — consolidated invoice at month end.",
+    "createdAt": "2026-01-20T11:45:00.000Z",
+    "updatedAt": "2026-09-20T10:15:00.000Z"
+  },
+  {
+    "id": 6,
+    "name": "Sylhet Tea Estate Depot",
+    "contactPerson": "Farhana Rahman",
+    "phone": "+8801311000666",
+    "email": "sylhet@teaestate.bd",
+    "address": "Zindabazar, Sylhet",
+    "dueAmount": 0,
+    "notes": null,
+    "createdAt": "2026-03-12T14:20:00.000Z",
+    "updatedAt": "2026-03-12T14:20:00.000Z"
+  }
+]

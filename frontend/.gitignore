@@ -1,0 +1,56 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+# `.env.example` stays tracked as the documented template; every other env file
+# (including .env.local) is ignored so API URLs and secrets never get committed.
+.env*
+!.env.example
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# ---------------------------------------------------------------------------
+# Local scratch / tooling artefacts
+# ---------------------------------------------------------------------------
+# Transient command output captured during development (dry runs, file
+# listings, tsc output, git status dumps). None of it belongs in a release
+# commit and some of it echoes local file listings.
+*.log
+.*.log
+.*.txt
+.*.json.tmp
+

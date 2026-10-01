@@ -1,0 +1,117 @@
+[
+  {
+    "id": 1,
+    "referenceNumber": "PO-20260905-001",
+    "supplierId": 1,
+    "supplierName": "Metro Beverage Depot",
+    "paymentStatus": "paid",
+    "items": [
+      { "id": 1, "purchaseId": 1, "productId": 1, "productName": "Coca-Cola 500ml PET Bottle", "sku": "BEV-COL-500", "unit": "bottle", "quantity": 48, "unitCost": 32, "discount": 0, "lineTotal": 1536 },
+      { "id": 2, "purchaseId": 1, "productId": 2, "productName": "Sprite 500ml PET Bottle", "sku": "BEV-SPR-500", "unit": "bottle", "quantity": 24, "unitCost": 32, "discount": 0, "lineTotal": 768 },
+      { "id": 3, "purchaseId": 1, "productId": 5, "productName": "Fresh Drinking Water 1L", "sku": "BEV-WAT-1L", "unit": "bottle", "quantity": 48, "unitCost": 15, "discount": 0, "lineTotal": 720 }
+    ],
+    "subtotal": 3024,
+    "discountTotal": 0,
+    "taxRate": 0,
+    "taxTotal": 0,
+    "grandTotal": 3024,
+    "paidAmount": 3024,
+    "dueAmount": 0,
+    "note": null,
+    "purchasedAt": "2026-09-05T09:30:00.000Z",
+    "createdAt": "2026-09-05T09:30:00.000Z",
+    "updatedAt": "2026-09-05T09:30:00.000Z"
+  },
+  {
+    "id": 2,
+    "referenceNumber": "PO-20260912-002",
+    "supplierId": 2,
+    "supplierName": "Chattogram Food Traders",
+    "paymentStatus": "unpaid",
+    "items": [
+      { "id": 4, "purchaseId": 2, "productId": 11, "productName": "Biscuit Family Pack 350g", "sku": "SNK-BIS-350", "unit": "pack", "quantity": 40, "unitCost": 95, "discount": 200, "lineTotal": 3600 },
+      { "id": 5, "purchaseId": 2, "productId": 10, "productName": "Potato Chips 25g", "sku": "SNK-CHP-25", "unit": "pack", "quantity": 100, "unitCost": 8, "discount": 0, "lineTotal": 800 },
+      { "id": 6, "purchaseId": 2, "productId": 9, "productName": "Chocolate Wafer Bar 40g", "sku": "SNK-WAF-40", "unit": "pack", "quantity": 60, "unitCost": 22, "discount": 0, "lineTotal": 1320 }
+    ],
+    "subtotal": 5920,
+    "discountTotal": 200,
+    "taxRate": 5,
+    "taxTotal": 286,
+    "grandTotal": 6006,
+    "paidAmount": 0,
+    "dueAmount": 6006,
+    "note": "Ordered at the monthly trade fair.",
+    "purchasedAt": "2026-09-12T11:00:00.000Z",
+    "createdAt": "2026-09-12T11:00:00.000Z",
+    "updatedAt": "2026-09-12T11:00:00.000Z"
+  },
+  {
+    "id": 3,
+    "referenceNumber": "PO-20260915-003",
+    "supplierId": 3,
+    "supplierName": "Dhaka Bakery Supplies",
+    "paymentStatus": "paid",
+    "items": [
+      { "id": 7, "purchaseId": 3, "productId": 13, "productName": "Plain Bread 400g", "sku": "BAK-BRD-400", "unit": "piece", "quantity": 60, "unitCost": 45, "discount": 0, "lineTotal": 2700 },
+      { "id": 8, "purchaseId": 3, "productId": 14, "productName": "Butter Croissant", "sku": "BAK-CRS-01", "unit": "piece", "quantity": 40, "unitCost": 38, "discount": 0, "lineTotal": 1520 },
+      { "id": 9, "purchaseId": 3, "productId": 15, "productName": "Whole Wheat Bread 350g", "sku": "BAK-BRD-WW-350", "unit": "piece", "quantity": 30, "unitCost": 60, "discount": 0, "lineTotal": 1800 }
+    ],
+    "subtotal": 6020,
+    "discountTotal": 0,
+    "taxRate": 0,
+    "taxTotal": 0,
+    "grandTotal": 6020,
+    "paidAmount": 6020,
+    "dueAmount": 0,
+    "note": null,
+    "purchasedAt": "2026-09-15T07:45:00.000Z",
+    "createdAt": "2026-09-15T07:45:00.000Z",
+    "updatedAt": "2026-09-15T07:45:00.000Z"
+  },
+  {
+    "id": 4,
+    "referenceNumber": "PO-20260918-004",
+    "supplierId": 4,
+    "supplierName": "Fresh Dairy Collective",
+    "paymentStatus": "partial",
+    "items": [
+      { "id": 10, "purchaseId": 4, "productId": 16, "productName": "Pasteurised Milk 1L", "sku": "DRY-MLK-1L", "unit": "liter", "quantity": 48, "unitCost": 78, "discount": 0, "lineTotal": 3744 },
+      { "id": 11, "purchaseId": 4, "productId": 17, "productName": "Farm Eggs (12 pcs)", "sku": "DRY-EGG-12", "unit": "dozen", "quantity": 10, "unitCost": 125, "discount": 0, "lineTotal": 1250 },
+      { "id": 12, "purchaseId": 4, "productId": 19, "productName": "Plain Yogurt 500g", "sku": "DRY-YGT-500", "unit": "piece", "quantity": 24, "unitCost": 85, "discount": 0, "lineTotal": 2040 }
+    ],
+    "subtotal": 7034,
+    "discountTotal": 0,
+    "taxRate": 0,
+    "taxTotal": 0,
+    "grandTotal": 7034,
+    "paidAmount": 4000,
+    "dueAmount": 3034,
+    "note": "Advance paid by bKash; balance due next delivery.",
+    "purchasedAt": "2026-09-18T06:30:00.000Z",
+    "createdAt": "2026-09-18T06:30:00.000Z",
+    "updatedAt": "2026-09-18T06:30:00.000Z"
+  },
+  {
+    "id": 5,
+    "referenceNumber": "PO-20260920-005",
+    "supplierId": 5,
+    "supplierName": "National Grocery Wholesalers",
+    "paymentStatus": "partial",
+    "items": [
+      { "id": 13, "purchaseId": 5, "productId": 8, "productName": "Potato Crackers 60g", "sku": "SNK-CRK-60", "unit": "pack", "quantity": 120, "unitCost": 18, "discount": 0, "lineTotal": 2160 },
+      { "id": 14, "purchaseId": 5, "productId": 18, "productName": "Salted Butter 200g", "sku": "DRY-BTR-200", "unit": "piece", "quantity": 12, "unitCost": 310, "discount": 0, "lineTotal": 3720 },
+      { "id": 15, "purchaseId": 5, "productId": 10, "productName": "Potato Chips 25g", "sku": "SNK-CHP-25", "unit": "pack", "quantity": 200, "unitCost": 8, "discount": 400, "lineTotal": 1200 }
+    ],
+    "subtotal": 7480,
+    "discountTotal": 400,
+    "taxRate": 5,
+    "taxTotal": 354,
+    "grandTotal": 7434,
+    "paidAmount": 2000,
+    "dueAmount": 5434,
+    "note": "VAT invoice provided with the delivery challan.",
+    "purchasedAt": "2026-09-20T10:15:00.000Z",
+    "createdAt": "2026-09-20T10:15:00.000Z",
+    "updatedAt": "2026-09-20T10:15:00.000Z"
+  }
+]

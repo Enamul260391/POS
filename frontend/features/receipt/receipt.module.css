@@ -1,0 +1,165 @@
+/*
+ * Print-specific styling for the 80 mm thermal receipt (Phase 6).
+ *
+ * Two presentation contexts share this one stylesheet:
+ *
+ * - Screen: the receipt is previewed inside the payment dialog. The dashed
+ *   border marks the paper edge; the surrounding scroll box (Tailwind classes
+ *   in `PaymentModal`) keeps a tall receipt inside the dialog.
+ * - Print: `react-to-print` copies this stylesheet into its hidden iframe and
+ *   prints only the receipt node, so dialog chrome, buttons and the
+ *   confirmation summary never reach the paper. The `@media print` block drops
+ *   the preview border and `@page` sizes the sheet at exactly 80 mm.
+ *
+ * Printer-friendly by design: plain text, dashed/dotted rules and one accent
+ * border — no images, icons or background graphics.
+ */
+
+.receipt {
+  box-sizing: border-box;
+  flex-shrink: 0;
+  width: 80mm;
+  margin: 0;
+  padding: 3mm;
+  border: 1px dashed #000;
+  background: #fff;
+  color: #000;
+  font-family: ui-monospace, "Cascadia Mono", "Courier New", monospace;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/* Everything inside follows the same box model. */
+.receipt *,
+.receipt *::before,
+.receipt *::after {
+  box-sizing: inherit;
+}
+
+.header {
+  text-align: center;
+}
+
+.shopName {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.shopLine {
+  margin: 1px 0 0;
+  font-size: 11px;
+}
+
+.divider {
+  margin: 2.5mm 0;
+  border: 0;
+  border-top: 1px dashed #000;
+}
+
+/* Centered free message from Settings (`receipt_header`). */
+.message {
+  margin: 1px 0 0;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.infoList {
+  margin: 0;
+}
+
+/* Key/value rows: label left, amount right (totals, info and payment blocks). */
+.row {
+  display: flex;
+  justify-content: space-between;
+  gap: 4mm;
+  margin: 0;
+}
+
+.rowTerm {
+  margin: 0;
+}
+
+.rowValue {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  margin: 0 0 1.5mm;
+  padding-bottom: 1.5mm;
+  border-bottom: 1px dotted #000;
+}
+
+.item:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.itemName {
+  margin: 0 0 1px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.itemTotal {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.grand {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4mm;
+  margin: 2mm 0 0;
+  padding-top: 1.5mm;
+  border-top: 2px solid #000;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.grandTotal {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.thanks {
+  margin: 0;
+  text-align: center;
+  font-weight: 600;
+}
+
+/* ---- Print: exact 80 mm sheet, no preview chrome ---- */
+
+@page {
+  size: 80mm auto;
+  margin: 0;
+}
+
+@media print {
+  /* The print iframe starts from the browser default sheet. */
+  body {
+    margin: 0;
+    padding: 0;
+    background: #fff;
+  }
+
+  .receipt {
+    border: 0;
+    width: 80mm;
+    color: #000;
+    background: #fff;
+  }
+}
