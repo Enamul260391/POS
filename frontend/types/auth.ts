@@ -19,9 +19,10 @@ export interface AuthUser {
    * Capabilities this user satisfies, already resolved by the API.
    *
    * These are capability **names** (`users.view`), not the raw permission slugs
-   * held through the roles (`users.manage`). The API did that resolution, so the
-   * UI never re-implements the alias rules and cannot disagree with the Gate
-   * that enforces them — comparing against the granted list is all it takes.
+   * held through the roles. The API did that resolution, so the UI never
+   * re-implements the capability-to-permission mapping and cannot disagree with
+   * the Gate that enforces it — comparing against the granted list is all it
+   * takes.
    *
    * Empty means the user may open nothing, which is a legitimate state (a role
    * with no grants yet) and is deliberately *not* treated as "unknown".

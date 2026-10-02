@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\V1\SettingsController;
 use App\Http\Controllers\Api\V1\StockMovementController;
 use App\Http\Controllers\Api\V1\SupplierController;
 use App\Http\Controllers\Api\V1\UserController;
+use App\Http\Controllers\Api\V1\UserPermissionController;
 use App\Http\Controllers\Api\V1\UserRoleController;
 use Illuminate\Support\Facades\Route;
 
@@ -374,6 +375,29 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::match(['put', 'patch'], '/users/{user}/roles', [UserRoleController::class, 'sync'])
             ->middleware('can:users.roles.update')
             ->name('users.roles.update');
+
+        // User -> permission overrides (allow/deny). The authorisation surface
+        // for a single user, guarded by the same capability as the role
+        // assignment above: an override *is* a change to what the account may do,
+        // so both live behind `users.roles.update`, and no new permission slug is
+        // introduced.
+        //
+        // Tenancy is enforced in the service: the `{user}` is resolved inside the
+        // authenticated business (another tenant's user is a 404) and every row is
+        // written with that same `business_id`, which is taken from the token and
+        // never from the payload. A user may not manage their own overrides.
+        Route::get('/users/{user}/permission-overrides', [UserPermissionController::class, 'index'])
+            ->middleware('can:users.roles.update')
+            ->name('users.permission-overrides.index');
+        Route::post('/users/{user}/permission-overrides', [UserPermissionController::class, 'store'])
+            ->middleware('can:users.roles.update')
+            ->name('users.permission-overrides.store');
+        Route::match(['put', 'patch'], '/users/{user}/permission-overrides', [UserPermissionController::class, 'sync'])
+            ->middleware('can:users.roles.update')
+            ->name('users.permission-overrides.sync');
+        Route::delete('/users/{user}/permission-overrides/{permission}', [UserPermissionController::class, 'destroy'])
+            ->middleware('can:users.roles.update')
+            ->name('users.permission-overrides.destroy');
 
         // Business settings — always the caller's own business; there is no
         // {business} segment to tamper with.

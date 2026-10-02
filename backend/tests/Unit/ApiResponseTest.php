@@ -5,16 +5,32 @@ declare(strict_types=1);
 namespace Tests\Unit;
 
 use App\Http\Resources\UserResource;
+use App\Models\Business;
+use App\Models\Permission;
+use App\Models\Role;
 use App\Models\User;
+use App\Services\Permission\PermissionService;
 use App\Support\ApiResponse;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Tests\TestCase;
 
 /**
  * Locks down the standard API envelope (see docs/API_ARCHITECTURE.md).
+ *
+ * `RefreshDatabase` is required even though most of this class is pure response
+ * shaping: the resource-shaping test below serialises a real `User` through
+ * `UserResource`, and that resource resolves the user's capabilities through
+ * `PermissionService` — which reads `user_permissions` and the role/permission
+ * joins. Without the migrated schema the in-memory SQLite connection has no
+ * tables at all and the serializer dies on `no such table: user_permissions`.
+ * Running the real migrations is what keeps the test exercising the genuine
+ * capability resolution instead of a stubbed one.
  */
 class ApiResponseTest extends TestCase
 {
+    use RefreshDatabase;
+
     /** @test */
     public function success_response_uses_the_standard_envelope(): void
     {
@@ -125,14 +141,44 @@ class ApiResponseTest extends TestCase
         ], $response->getData(true));
     }
 
-    /** @test */
+    /**
+     * @test
+     *
+     * The paginated envelope must shape items through the real resource, so the
+     * user is a genuine persisted row with a real role grant: the `capabilities`
+     * key is then the one `PermissionService` actually resolves from
+     * `role_user` / `permission_role` / `permissions`, which is what makes this
+     * test a resource-transformation test rather than a snapshot of an array
+     * literal. A synthetic `new User` cannot do that — resolving its
+     * capabilities would query rows that do not exist.
+     */
     public function paginated_response_shapes_items_through_a_resource(): void
     {
-        $user = new User;
-        $user->id = 42;
-        $user->business_id = 7;
-        $user->name = 'Ada Lovelace';
-        $user->email = 'ada@example.com';
+        $business = Business::factory()->create();
+
+        $user = User::factory()->create([
+            'business_id' => $business->getKey(),
+            'name' => 'Ada Lovelace',
+            'email' => 'ada@example.com',
+        ]);
+
+        // Exactly one capability, so the resolved list is unambiguous and a
+        // regression that grants everything (or nothing) is visible here.
+        $permission = Permission::create([
+            'name' => 'View products',
+            'slug' => PermissionService::slugFor(PermissionService::PRODUCTS_VIEW),
+        ]);
+
+        $role = Role::create([
+            'business_id' => $business->getKey(),
+            'name' => 'Catalogue reader',
+            'slug' => 'catalogue-reader',
+            'description' => 'Fixture role granting a single capability.',
+        ]);
+
+        $role->permissions()->sync([$permission->getKey()]);
+        $user->roles()->sync([$role->getKey()]);
+        $user->unsetRelation('roles')->unsetRelation('permissions');
 
         $paginator = new LengthAwarePaginator([$user], 1, 20, 1);
 
@@ -141,15 +187,22 @@ class ApiResponseTest extends TestCase
         $item = $response->getData(true)['data']['items'][0];
 
         $this->assertSame([
-            'id' => 42,
-            'business_id' => 7,
+            'id' => $user->getKey(),
+            'business_id' => $business->getKey(),
             'name' => 'Ada Lovelace',
             'email' => 'ada@example.com',
-            'created_at' => null,
+            'created_at' => $user->created_at->toDateTimeString(),
+            'capabilities' => [PermissionService::PRODUCTS_VIEW],
         ], $item);
 
         // Sensitive attributes are never part of the payload.
         $this->assertArrayNotHasKey('password', $item);
         $this->assertArrayNotHasKey('remember_token', $item);
+
+        // The same resolution the Gate enforces with, computed for the client.
+        $this->assertSame(
+            [PermissionService::PRODUCTS_VIEW],
+            app(PermissionService::class)->resolvedCapabilities($user),
+        );
     }
 }

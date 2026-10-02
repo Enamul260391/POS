@@ -20,17 +20,33 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
  *
  * ## Naming
  * The API authorises against the fine-grained capability names below
- * (`roles.update`, `sales.create`, `products.view`, `inventory.manage`, ...).
- * The existing seeded catalogue uses the coarser `<resource>.manage` convention
- * (`roles.manage`, `sales.manage`, `inventory.manage`, ...), and those rows
- * already exist in installations. Rather than inventing a second naming system
- * or forcing a reseed, each capability accepts a set of equivalent slugs: the
- * specific one **or** the coarser `*.manage` permission for the same resource.
- * A business that seeds the finer catalogue gets exact per-action control; one
- * that still has the original `*.manage` rows keeps working unchanged.
+ * (`roles.update`, `sales.create`, `products.view`, `inventory.manage`, ...),
+ * and every one of them resolves through a single canonical permission slug.
  *
- * Every check runs against the slugs held through the user's roles and is
- * memoised on the user instance, so N checks cost at most one query.
+ * The catalogue that shipped originally was coarse (`roles.manage`,
+ * `sales.manage`, ...). Those 14 rows existed only as a compatibility shim for
+ * the coarse convention and have since been retired: the migration
+ * `2026_10_01_300000_remove_coarse_manage_permissions` first materialised every
+ * fine-grained grant each coarse row already implied (including the two
+ * cross-domain aliases) and migrated any user override that referenced one,
+ * then removed the rows themselves. No capability resolves through a
+ * `<resource>.manage` slug any more, so a stale `*.manage` grant cannot
+ * silently re-authorise anything.
+ *
+ * Two capability names still *end* in `.manage` — `inventory.manage` and
+ * `cash_registers.manage`. Those are capability names, not slugs: they are the
+ * route/gate/frontend identifiers for two writes that are genuinely not CRUD
+ * verbs (a manual stock adjustment and a manual cash movement) and are therefore
+ * backed by the slugs `inventory.adjust` and
+ * `cash_registers.transactions.create`, which describe the action itself. The
+ * capability names are preserved because the routes and the `capabilities`
+ * list published to the client are API surface.
+ *
+ * Every check runs against the user's *effective* slugs — the permissions held
+ * through their roles, plus their ALLOW overrides, minus their DENY overrides
+ * (`Effective = (role permissions ∪ user ALLOW) − user DENY`). Both the role
+ * resolution and the overrides are memoised on the user instance, so N checks
+ * cost at most two queries.
  */
 final class PermissionService
 {
@@ -71,11 +87,14 @@ final class PermissionService
     // Operational domains
     //
     // Each domain follows the same shape as the administration block above:
-    // a fine-grained capability per verb, with the pre-existing coarse
-    // `<resource>.manage` permission accepted as a compatibility alias. A role
-    // that was seeded with only `products.manage` therefore keeps exactly the
-    // product access it always had, while a role that is granted the newer
-    // `products.view` can be restricted to reading.
+    // a fine-grained capability per verb, each backed by its own permission. A
+    // role granted `products.view` and nothing else can read the catalogue and
+    // do nothing to it; granting `products.delete` is a separate decision.
+    //
+    // There are no coarse `<resource>.manage` aliases left in this table. A role
+    // that was originally seeded with only `products.manage` kept exactly the
+    // product access it always had because the fine-grained rows it stood for
+    // were materialised for it before the coarse row stopped being read.
     // ------------------------------------------------------------------
 
     /** Read the product catalogue. */
@@ -110,10 +129,24 @@ final class PermissionService
      *
      * Deliberately a single capability: stock correction is a ledger write that
      * bypasses the normal purchase/sale flow, so it is never a "read" or an
-     * ordinary CRUD verb. The slug is the pre-existing `inventory.manage`
-     * permission, so no new permission row is introduced for it.
+     * ordinary CRUD verb.
+     *
+     * The capability *name* is preserved from the original API because the
+     * `can:` middleware and the client's `capabilities` list both use it, but it
+     * is no longer the permission slug. The slug is {@see INVENTORY_ADJUST},
+     * which names the action instead of using the retired `.manage`
+     * convention.
      */
     public const INVENTORY_MANAGE = 'inventory.manage';
+
+    /**
+     * The permission slug backing {@see INVENTORY_MANAGE}.
+     *
+     * Introduced by Step 6: the coarse `inventory.manage` row existed only as
+     * its own alias, so there was no fine-grained catalogue entry describing
+     * the write it performed. This is that entry, and it describes the action.
+     */
+    public const INVENTORY_ADJUST = 'inventory.adjust';
 
     /** Read customers. */
     public const CUSTOMERS_VIEW = 'customers.view';
@@ -217,11 +250,23 @@ final class PermissionService
     /**
      * Record a manual cash movement (cash in / cash out).
      *
-     * The slug is the pre-existing `cash_registers.manage` permission: moving
-     * money in or out of the drawer by hand is exactly what that coarse
-     * capability was created for, so no new permission row is introduced.
+     * Moving money in or out of the drawer by hand is not a CRUD verb, so this
+     * capability has no `create/update/delete` siblings. As with
+     * {@see INVENTORY_MANAGE} the capability *name* is preserved from the
+     * original API while the permission slug is
+     * {@see CASH_REGISTERS_TRANSACTIONS_CREATE}, which names the action.
      */
     public const CASH_REGISTERS_MANAGE = 'cash_registers.manage';
+
+    /**
+     * The permission slug backing {@see CASH_REGISTERS_MANAGE}.
+     *
+     * Matches the nested resource it acts on: the cash drawer owns transactions
+     * (`POST /cash-registers/{register}/transactions`), so writing one is
+     * creating one. Consistent with `sales.payments.create` elsewhere in the
+     * catalogue.
+     */
+    public const CASH_REGISTERS_TRANSACTIONS_CREATE = 'cash_registers.transactions.create';
 
     /**
      * Read the reporting suite (dashboard, sales, purchases, expenses,
@@ -233,88 +278,136 @@ final class PermissionService
     public const REPORTS_VIEW = 'reports.view';
 
     /**
-     * Accepted slug aliases per capability.
+     * The permission slug each capability resolves through.
      *
-     * The first entry is the canonical, fine-grained slug; the rest are
-     * compatibility aliases matching the pre-existing seeded convention.
+     * A **capability** is the name the API authorises against — the `can:`
+     * middleware, `$user->hasPermission()`, and the `capabilities` list
+     * `UserResource` publishes. A **slug** is a row in the global `permissions`
+     * catalogue. For almost every capability the two are the same string, which
+     * is why this map reads as an identity listing; the only exceptions are
+     * {@see INVENTORY_MANAGE} and {@see CASH_REGISTERS_MANAGE}, whose names are
+     * kept for API compatibility while their slugs name the action.
+     *
+     * Each capability maps to exactly one slug. There are no aliases left: the
+     * coarse `<resource>.manage` compatibility shim is gone, and the grants it
+     * used to imply were materialised into real `permission_role` rows by
+     * `2026_10_01_300000_remove_coarse_manage_permissions` before the coarse
+     * catalogue rows were dropped. That keeps authorization expressed directly
+     * in the data, where a tenant can see and edit it, instead of hidden behind
+     * a naming convention in this file.
+     *
+     * The `expenses.manage -> expense_categories.*` and
+     * `roles.manage -> permissions.view` / `users.roles.update` relationships
+     * were real cross-domain aliases, not accidents. They were preserved by
+     * materialising those grants for every role that held the coarse
+     * permission, so no role lost access when the alias disappeared.
      *
      * @var array<string, array<int, string>>
      */
     public const CAPABILITIES = [
-        self::ROLES_VIEW => [self::ROLES_VIEW, 'roles.manage'],
-        self::ROLES_CREATE => [self::ROLES_CREATE, 'roles.manage'],
-        self::ROLES_UPDATE => [self::ROLES_UPDATE, 'roles.manage'],
-        self::ROLES_DELETE => [self::ROLES_DELETE, 'roles.manage'],
-        self::PERMISSIONS_VIEW => [self::PERMISSIONS_VIEW, 'roles.manage'],
-        self::USERS_VIEW => [self::USERS_VIEW, 'users.manage'],
-        self::USERS_CREATE => [self::USERS_CREATE, 'users.manage'],
-        self::USERS_UPDATE => [self::USERS_UPDATE, 'users.manage'],
-        self::USERS_ROLES_UPDATE => [self::USERS_ROLES_UPDATE, 'users.manage', 'roles.manage'],
-        self::SETTINGS_VIEW => [self::SETTINGS_VIEW, 'settings.manage'],
-        self::SETTINGS_UPDATE => [self::SETTINGS_UPDATE, 'settings.manage'],
+        self::ROLES_VIEW => [self::ROLES_VIEW],
+        self::ROLES_CREATE => [self::ROLES_CREATE],
+        self::ROLES_UPDATE => [self::ROLES_UPDATE],
+        self::ROLES_DELETE => [self::ROLES_DELETE],
+        self::PERMISSIONS_VIEW => [self::PERMISSIONS_VIEW],
+        self::USERS_VIEW => [self::USERS_VIEW],
+        self::USERS_CREATE => [self::USERS_CREATE],
+        self::USERS_UPDATE => [self::USERS_UPDATE],
+        self::USERS_ROLES_UPDATE => [self::USERS_ROLES_UPDATE],
+        self::SETTINGS_VIEW => [self::SETTINGS_VIEW],
+        self::SETTINGS_UPDATE => [self::SETTINGS_UPDATE],
 
-        // Categories — `categories.manage` is new: the catalogue had no
-        // category permission at all, so there is no pre-existing coarse
-        // capability for this domain to alias.
-        self::CATEGORIES_VIEW => [self::CATEGORIES_VIEW, 'categories.manage'],
-        self::CATEGORIES_CREATE => [self::CATEGORIES_CREATE, 'categories.manage'],
-        self::CATEGORIES_UPDATE => [self::CATEGORIES_UPDATE, 'categories.manage'],
-        self::CATEGORIES_DELETE => [self::CATEGORIES_DELETE, 'categories.manage'],
+        self::CATEGORIES_VIEW => [self::CATEGORIES_VIEW],
+        self::CATEGORIES_CREATE => [self::CATEGORIES_CREATE],
+        self::CATEGORIES_UPDATE => [self::CATEGORIES_UPDATE],
+        self::CATEGORIES_DELETE => [self::CATEGORIES_DELETE],
 
-        self::PRODUCTS_VIEW => [self::PRODUCTS_VIEW, 'products.manage'],
-        self::PRODUCTS_CREATE => [self::PRODUCTS_CREATE, 'products.manage'],
-        self::PRODUCTS_UPDATE => [self::PRODUCTS_UPDATE, 'products.manage'],
-        self::PRODUCTS_DELETE => [self::PRODUCTS_DELETE, 'products.manage'],
+        self::PRODUCTS_VIEW => [self::PRODUCTS_VIEW],
+        self::PRODUCTS_CREATE => [self::PRODUCTS_CREATE],
+        self::PRODUCTS_UPDATE => [self::PRODUCTS_UPDATE],
+        self::PRODUCTS_DELETE => [self::PRODUCTS_DELETE],
 
-        self::INVENTORY_VIEW => [self::INVENTORY_VIEW, 'inventory.manage'],
-        self::INVENTORY_MANAGE => [self::INVENTORY_MANAGE, 'inventory.adjust'],
+        self::INVENTORY_VIEW => [self::INVENTORY_VIEW],
+        self::INVENTORY_MANAGE => [self::INVENTORY_ADJUST],
 
-        self::CUSTOMERS_VIEW => [self::CUSTOMERS_VIEW, 'customers.manage'],
-        self::CUSTOMERS_CREATE => [self::CUSTOMERS_CREATE, 'customers.manage'],
-        self::CUSTOMERS_UPDATE => [self::CUSTOMERS_UPDATE, 'customers.manage'],
-        self::CUSTOMERS_DELETE => [self::CUSTOMERS_DELETE, 'customers.manage'],
+        self::CUSTOMERS_VIEW => [self::CUSTOMERS_VIEW],
+        self::CUSTOMERS_CREATE => [self::CUSTOMERS_CREATE],
+        self::CUSTOMERS_UPDATE => [self::CUSTOMERS_UPDATE],
+        self::CUSTOMERS_DELETE => [self::CUSTOMERS_DELETE],
 
-        self::SUPPLIERS_VIEW => [self::SUPPLIERS_VIEW, 'suppliers.manage'],
-        self::SUPPLIERS_CREATE => [self::SUPPLIERS_CREATE, 'suppliers.manage'],
-        self::SUPPLIERS_UPDATE => [self::SUPPLIERS_UPDATE, 'suppliers.manage'],
-        self::SUPPLIERS_DELETE => [self::SUPPLIERS_DELETE, 'suppliers.manage'],
+        self::SUPPLIERS_VIEW => [self::SUPPLIERS_VIEW],
+        self::SUPPLIERS_CREATE => [self::SUPPLIERS_CREATE],
+        self::SUPPLIERS_UPDATE => [self::SUPPLIERS_UPDATE],
+        self::SUPPLIERS_DELETE => [self::SUPPLIERS_DELETE],
 
-        self::PURCHASES_VIEW => [self::PURCHASES_VIEW, 'purchases.manage'],
-        self::PURCHASES_CREATE => [self::PURCHASES_CREATE, 'purchases.manage'],
-        self::PURCHASES_UPDATE => [self::PURCHASES_UPDATE, 'purchases.manage'],
-        self::PURCHASES_DELETE => [self::PURCHASES_DELETE, 'purchases.manage'],
+        self::PURCHASES_VIEW => [self::PURCHASES_VIEW],
+        self::PURCHASES_CREATE => [self::PURCHASES_CREATE],
+        self::PURCHASES_UPDATE => [self::PURCHASES_UPDATE],
+        self::PURCHASES_DELETE => [self::PURCHASES_DELETE],
 
-        self::SALES_VIEW => [self::SALES_VIEW, 'sales.manage'],
-        self::SALES_CREATE => [self::SALES_CREATE, 'sales.manage'],
-        self::SALES_UPDATE => [self::SALES_UPDATE, 'sales.manage'],
-        self::SALES_DELETE => [self::SALES_DELETE, 'sales.manage'],
-        self::SALES_PAYMENTS_CREATE => [self::SALES_PAYMENTS_CREATE, 'sales.manage'],
+        self::SALES_VIEW => [self::SALES_VIEW],
+        self::SALES_CREATE => [self::SALES_CREATE],
+        self::SALES_UPDATE => [self::SALES_UPDATE],
+        self::SALES_DELETE => [self::SALES_DELETE],
+        self::SALES_PAYMENTS_CREATE => [self::SALES_PAYMENTS_CREATE],
 
-        // Sale returns — `sale_returns.manage` is new, for the same reason as
-        // `categories.manage`: the catalogue had no permission for this domain.
-        self::SALE_RETURNS_VIEW => [self::SALE_RETURNS_VIEW, 'sale_returns.manage'],
-        self::SALE_RETURNS_CREATE => [self::SALE_RETURNS_CREATE, 'sale_returns.manage'],
+        self::SALE_RETURNS_VIEW => [self::SALE_RETURNS_VIEW],
+        self::SALE_RETURNS_CREATE => [self::SALE_RETURNS_CREATE],
 
-        self::EXPENSES_VIEW => [self::EXPENSES_VIEW, 'expenses.manage'],
-        self::EXPENSES_CREATE => [self::EXPENSES_CREATE, 'expenses.manage'],
-        self::EXPENSES_UPDATE => [self::EXPENSES_UPDATE, 'expenses.manage'],
-        self::EXPENSES_DELETE => [self::EXPENSES_DELETE, 'expenses.manage'],
+        self::EXPENSES_VIEW => [self::EXPENSES_VIEW],
+        self::EXPENSES_CREATE => [self::EXPENSES_CREATE],
+        self::EXPENSES_UPDATE => [self::EXPENSES_UPDATE],
+        self::EXPENSES_DELETE => [self::EXPENSES_DELETE],
 
-        // Expense categories are a sub-resource of expenses: the existing
-        // coarse `expenses.manage` is their only compatibility alias, so a role
-        // that could manage expenses can always manage their categories.
-        self::EXPENSE_CATEGORIES_VIEW => [self::EXPENSE_CATEGORIES_VIEW, 'expense_categories.manage', 'expenses.manage'],
-        self::EXPENSE_CATEGORIES_CREATE => [self::EXPENSE_CATEGORIES_CREATE, 'expense_categories.manage', 'expenses.manage'],
-        self::EXPENSE_CATEGORIES_UPDATE => [self::EXPENSE_CATEGORIES_UPDATE, 'expense_categories.manage', 'expenses.manage'],
-        self::EXPENSE_CATEGORIES_DELETE => [self::EXPENSE_CATEGORIES_DELETE, 'expense_categories.manage', 'expenses.manage'],
+        self::EXPENSE_CATEGORIES_VIEW => [self::EXPENSE_CATEGORIES_VIEW],
+        self::EXPENSE_CATEGORIES_CREATE => [self::EXPENSE_CATEGORIES_CREATE],
+        self::EXPENSE_CATEGORIES_UPDATE => [self::EXPENSE_CATEGORIES_UPDATE],
+        self::EXPENSE_CATEGORIES_DELETE => [self::EXPENSE_CATEGORIES_DELETE],
 
-        self::CASH_REGISTERS_VIEW => [self::CASH_REGISTERS_VIEW, 'cash_registers.manage'],
-        self::CASH_REGISTERS_CREATE => [self::CASH_REGISTERS_CREATE, 'cash_registers.manage'],
-        self::CASH_REGISTERS_UPDATE => [self::CASH_REGISTERS_UPDATE, 'cash_registers.manage'],
-        self::CASH_REGISTERS_MANAGE => [self::CASH_REGISTERS_MANAGE, 'cash_registers.transactions.create'],
+        self::CASH_REGISTERS_VIEW => [self::CASH_REGISTERS_VIEW],
+        self::CASH_REGISTERS_CREATE => [self::CASH_REGISTERS_CREATE],
+        self::CASH_REGISTERS_UPDATE => [self::CASH_REGISTERS_UPDATE],
+        self::CASH_REGISTERS_MANAGE => [self::CASH_REGISTERS_TRANSACTIONS_CREATE],
 
-        self::REPORTS_VIEW => [self::REPORTS_VIEW, 'reports.manage'],
+        self::REPORTS_VIEW => [self::REPORTS_VIEW],
     ];
+
+    /**
+     * Every permission slug the catalogue is expected to contain.
+     *
+     * The canonical slug of every capability, de-duplicated and in
+     * {@see ALL_CAPABILITIES} order. This is the set the seeder creates and the
+     * set the Step 6 migration treats as "the fine-grained taxonomy", so it is
+     * derived rather than restated: adding a capability to
+     * {@see CAPABILITIES} is enough to have its slug seeded.
+     *
+     * @return array<int, string>
+     */
+    public static function catalogueSlugs(): array
+    {
+        $slugs = [];
+
+        foreach (self::ALL_CAPABILITIES as $capability) {
+            foreach (self::slugsFor($capability) as $slug) {
+                $slugs[$slug] = true;
+            }
+        }
+
+        return array_keys($slugs);
+    }
+
+    /**
+     * The canonical slug backing a capability.
+     *
+     * The inverse of {@see self::CAPABILITIES}, and what test fixtures and the
+     * seeder need when they want "the permission for this capability". Differs
+     * from the capability name only for {@see INVENTORY_MANAGE} and
+     * {@see CASH_REGISTERS_MANAGE}.
+     */
+    public static function slugFor(string $capability): string
+    {
+        return self::slugsFor($capability)[0] ?? $capability;
+    }
 
     /** Every capability name, in a stable order (used for docs and tests). */
     public const ALL_CAPABILITIES = [
@@ -385,7 +478,11 @@ final class PermissionService
     public const MAX_PER_PAGE = 100;
 
     /**
-     * Slug aliases that satisfy the given capability.
+     * The permission slug(s) that satisfy the given capability.
+     *
+     * Returns exactly one slug for every known capability — the canonical,
+     * fine-grained one. An unknown capability falls back to itself, so a typo in
+     * a `can:` route name fails closed instead of throwing.
      *
      * @return array<int, string>
      */
@@ -409,13 +506,38 @@ final class PermissionService
      *
      * Used by the Gate definition in `AppServiceProvider`, which is in turn used
      * by route middleware, `$user->can()` and `$user->hasPermission()`.
+     *
+     * Effective access is the user's role grants, plus their ALLOW overrides,
+     * minus their DENY overrides:
+     *
+     *     Effective = (role permissions ∪ user ALLOW) − user DENY
+     *
+     * A DENY outranks everything: if the slug backing this capability
+     * (`slugsFor()`) is explicitly denied, the capability is refused even when a
+     * role — or a user ALLOW — would otherwise have granted it. That makes a
+     * per-user revocation authoritative.
+     *
+     * The DENY check runs against the slug list rather than a single value
+     * because `slugsFor()` is a list by contract; with one canonical slug per
+     * capability it degenerates to exactly that one comparison.
      */
     public function grants(User $user, string $capability): bool
     {
-        $held = $user->permissionSlugs();
+        $slugs = self::slugsFor($capability);
 
-        foreach (self::slugsFor($capability) as $slug) {
-            if (in_array($slug, $held, true)) {
+        // An explicit DENY wins over role grants and ALLOWs.
+        $denied = $user->deniedPermissionSlugs();
+
+        foreach ($slugs as $slug) {
+            if (in_array($slug, $denied, true)) {
+                return false;
+            }
+        }
+
+        $effective = $user->effectivePermissionSlugs();
+
+        foreach ($slugs as $slug) {
+            if (in_array($slug, $effective, true)) {
                 return true;
             }
         }
@@ -432,13 +554,15 @@ final class PermissionService
      *
      * Capability *names* are returned — not the raw permission slugs held through
      * the user's roles — so the client compares one value against another
-     * (`users.view`) and never has to re-implement the alias resolution of
-     * {@see self::CAPABILITIES} (`users.manage` satisfying `users.view`). That
-     * mapping therefore stays in exactly one place and cannot drift between the
-     * server's Gate and the client's own idea of the rules.
+     * (`users.view`) and never has to re-implement the capability-to-slug
+     * mapping of {@see self::CAPABILITIES} (`inventory.adjust` satisfying
+     * `inventory.manage`). That mapping therefore stays in exactly one place and
+     * cannot drift between the server's Gate and the client's own idea of the
+     * rules.
      *
-     * `permissionSlugs()` is memoised on the model instance, so the whole list
-     * costs at most one query, however many capabilities are tested.
+     * The user's role permissions and their overrides are both memoised on the
+     * model instance, so the whole list costs at most two queries however many
+     * capabilities are tested.
      *
      * @return array<int, string>
      */

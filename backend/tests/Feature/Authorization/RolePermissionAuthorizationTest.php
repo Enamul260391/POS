@@ -158,12 +158,21 @@ class RolePermissionAuthorizationTest extends TestCase
     }
 
     /** @test */
-    public function the_legacy_manage_permission_still_satisfies_the_matching_capability(): void
+    public function the_canonical_fine_grained_permissions_authorise_their_own_capabilities(): void
     {
-        // The seeded catalogue predates the fine-grained names, so `roles.manage`
-        // must keep authorising role management rather than locking everyone out.
+        // Every capability now resolves through its own explicit permission, so
+        // holding exactly that set must authorise exactly those capabilities.
         $user = $this->userWithPermissions(
-            ['roles.manage', 'settings.manage', 'users.manage'],
+            [
+                PermissionService::ROLES_VIEW,
+                PermissionService::ROLES_CREATE,
+                PermissionService::ROLES_UPDATE,
+                PermissionService::ROLES_DELETE,
+                PermissionService::PERMISSIONS_VIEW,
+                PermissionService::SETTINGS_VIEW,
+                PermissionService::SETTINGS_UPDATE,
+                PermissionService::USERS_ROLES_UPDATE,
+            ],
             Business::factory()->create()->id,
         );
 
@@ -175,6 +184,69 @@ class RolePermissionAuthorizationTest extends TestCase
         $this->assertTrue($user->hasPermission(PermissionService::SETTINGS_VIEW));
         $this->assertTrue($user->hasPermission(PermissionService::SETTINGS_UPDATE));
         $this->assertTrue($user->hasPermission(PermissionService::USERS_ROLES_UPDATE));
+    }
+
+    /** @test */
+    public function a_retired_manage_slug_no_longer_satisfies_the_matching_capability(): void
+    {
+        // The coarse rows are still a real possibility in an installation that
+        // has not run the database cleanup migration yet, so this proves what
+        // happens if one survives: it authorises nothing. Once the cleanup
+        // migration removes the rows entirely, this test simply documents that
+        // the runtime never depended on them.
+        $coarse = $this->userWithLiteralPermissions(
+            ['roles.manage', 'settings.manage', 'users.manage'],
+            Business::factory()->create()->id,
+        );
+
+        $this->assertFalse($coarse->hasPermission(PermissionService::ROLES_VIEW));
+        $this->assertFalse($coarse->hasPermission(PermissionService::ROLES_CREATE));
+        $this->assertFalse($coarse->hasPermission(PermissionService::ROLES_UPDATE));
+        $this->assertFalse($coarse->hasPermission(PermissionService::ROLES_DELETE));
+        $this->assertFalse($coarse->hasPermission(PermissionService::PERMISSIONS_VIEW));
+        $this->assertFalse($coarse->hasPermission(PermissionService::SETTINGS_VIEW));
+        $this->assertFalse($coarse->hasPermission(PermissionService::SETTINGS_UPDATE));
+        $this->assertFalse($coarse->hasPermission(PermissionService::USERS_ROLES_UPDATE));
+    }
+
+    /** @test */
+    public function role_management_does_not_imply_the_permission_catalogue_or_role_assignment(): void
+    {
+        // `roles.manage` used to alias `permissions.view` and `users.roles.update`
+        // as well. Those were cross-domain relationships, not the semantic
+        // equivalent of "manage roles", and they are gone: reading the global
+        // permission catalogue and deciding who holds which role are now separate
+        // capabilities that must be granted separately.
+        $business = Business::factory()->create();
+
+        $user = $this->userWithPermissions(
+            [
+                PermissionService::ROLES_VIEW,
+                PermissionService::ROLES_CREATE,
+                PermissionService::ROLES_UPDATE,
+                PermissionService::ROLES_DELETE,
+            ],
+            $business->id,
+        );
+
+        $this->assertTrue($user->hasPermission(PermissionService::ROLES_UPDATE));
+        $this->assertFalse($user->hasPermission(PermissionService::PERMISSIONS_VIEW));
+        $this->assertFalse($user->hasPermission(PermissionService::USERS_ROLES_UPDATE));
+
+        // And the two endpoints behind those capabilities really are refused.
+        $this->getJson('/api/v1/roles')->assertStatus(200);
+        $this->getJson('/api/v1/permissions')->assertStatus(403);
+
+        $member = User::factory()->create(['business_id' => $business->id]);
+        $this->putJson('/api/v1/users/'.$member->id.'/roles', ['role_ids' => []])->assertStatus(403);
+
+        // Holding them explicitly is what works.
+        $this->userWithPermissions(
+            [PermissionService::PERMISSIONS_VIEW, PermissionService::USERS_ROLES_UPDATE],
+            $business->id,
+        );
+        $this->getJson('/api/v1/permissions')->assertStatus(200);
+        $this->putJson('/api/v1/users/'.$member->id.'/roles', ['role_ids' => []])->assertStatus(200);
     }
 
     /** @test */

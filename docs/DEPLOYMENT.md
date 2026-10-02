@@ -1,12 +1,47 @@
 # DEPLOYMENT — Production Checklist
 
 Scope: `backend/` (Laravel 12 REST API) and `frontend/` (Next.js App Router).
-The two are deployed as **separate applications**. Nothing in this document
-invents a hostname, IP, or version — every placeholder is marked `<...>` and
-must be supplied by whoever owns the infrastructure.
+The two are deployed as **separate applications**.
 
-**This document contains no real domain names or credentials.** Substitute your
-own values at deploy time.
+## Production topology (this project)
+
+| Layer | Technology | Production endpoint |
+| ----- | ---------- | ------------------- |
+| Frontend | Next.js 16 + TypeScript | `https://pos.techcandlebd.com` |
+| Backend | Laravel 12 REST API | `https://api.techcandlebd.com` |
+| Database | MySQL | server-local, not publicly reachable |
+| Authentication | Laravel Sanctum (bearer tokens) | `POST /api/v1/auth/login` |
+| Realtime | Laravel Reverb (WebSocket) | behind the API's proxy |
+| API | REST under `/api/v1` | — |
+
+```
+Browser
+   |
+   v
+Next.js Frontend        https://pos.techcandlebd.com
+   |
+   | REST API
+   v
+Laravel Backend         https://api.techcandlebd.com
+   |
+   +---- MySQL
+   |
+   +---- Sanctum Authentication
+   |
+   +---- Reverb / WebSocket
+   |
+   +---- Queue / Cache
+```
+
+Request flow between the two hosts is **always cross-origin**, so the API must
+list the frontend's origin in `CORS_ALLOWED_ORIGINS` (§5).
+
+Every remaining placeholder in this document is marked `<...>` and refers to a
+value the operator supplies (a port, a path, a certificate) rather than to
+something the project can decide.
+
+**This document contains no credentials or secrets.** Substitute real secret
+values at deploy time and never commit them.
 
 ---
 
@@ -467,12 +502,47 @@ work, deliberately out of scope for Phase RT-1:
 
 ## 9. Frontend production build
 
+### Deployment mode: Next.js server/runtime — **not** a static export
+
+`next.config.ts` sets no `output` option, so the project builds with the default
+Node server output. This is **required**, not a default that happens to be
+convenient:
+
+| Route | Build output |
+| ----- | ------------ |
+| `/`, `/login`, `/dashboard`, `/pos`, `/products`, … | Static (prerendered) |
+| **`/sales/[id]`** | **Dynamic — server-rendered on demand** |
+| `/_not-found` | Static |
+
+`/sales/[id]` is a dynamic route, and the application reads authenticated,
+per-request data (the Sanctum token lives in browser storage, so the value
+itself is never available during a build-time prerender). `output: "export"`
+would therefore fail the build or silently ship an empty shell.
+
+**Consequence:** the frontend needs a Node runtime to serve. `.next/` is not a
+set of droppable static files.
+
 ```bash
 cd frontend
 npm ci                 # package-lock.json is committed; use npm ci for reproducibility
 npm run build
 npm run start          # serves the production build
 ```
+
+`npm run build` produces `.next/` containing `server/`, `static/`, `build/`,
+`turbopack/` and the manifests. Because `output: "standalone"` is **not** set,
+there is no self-contained `.next/standalone/` bundle and no `.next/BUILD_ID`-style
+minimal server: **the whole `.next/` directory plus `node_modules/` and
+`public/` must be deployed together**, and `next start` (or `frontend/server.js`,
+a minimal `http.createServer` wrapper) is launched from the project root.
+
+Run that server under a process supervisor (systemd or pm2) and put a reverse
+proxy in front of it for TLS and static caching. `next start` is not a
+production-grade supervisor by itself.
+
+Production build requirements: **Node.js 20.9+**, `npm`, and the production
+`NEXT_PUBLIC_*` values from §2.2. Changing any `NEXT_PUBLIC_*` value requires a
+**rebuild** — they are inlined into the bundle, not read at runtime.
 
 ---
 
@@ -686,22 +756,42 @@ Verified in this repository (Windows dev environment, PHP 8.2.33, Node 20.20.2):
 
 | Gate | Result |
 | --- | --- |
-| `php artisan test` | **291 passed**, 1559 assertions, 0 failures |
+| `vendor/bin/phpunit` | **541 passed**, 5101 assertions, **0 failures, 0 errors** |
+| `vendor/bin/phpunit tests/Unit` | 32 passed, 184 assertions |
+| `vendor/bin/phpunit tests/Feature/Authorization` | 86 passed, 2018 assertions |
+| `vendor/bin/phpunit tests/Feature/Permission` | 8 passed, 40 assertions |
+| `vendor/bin/phpunit tests/Feature/UserPermission` | 36 passed, 188 assertions |
+| `vendor/bin/phpunit tests/Feature/Migration` | 60 passed, 928 assertions |
+| `composer validate` | `./composer.json is valid` |
+| `composer check-platform-reqs` | all requirements satisfied (PHP 8.2.33) |
+| `vendor/bin/pint --test` (the two STEP files) | **PASS**, 2 files |
 | `npx tsc --noEmit` | **0 errors** |
-| `npx eslint .` | **0 errors**, 2 pre-existing warnings |
-| `npm run build` | **Succeeds** (exit 0), no source maps emitted |
-| `php artisan route:list` | 78 lines, all routes resolve |
-| `php artisan migrate:status` | All 28 migrations present |
+| `npm run build` | **Succeeds** (exit 0), no TypeScript errors |
+| `php artisan migrate:status` | All **32** migrations `Ran`, 0 pending |
 | `config:cache` / `route:cache` / `view:cache` | All succeed; revert cleanly via `optimize:clear` |
 
 Passing tests do **not** make the application production-ready. The items in
 §§ 1–15 are environment-dependent and require the actual infrastructure to
 complete.
 
-**Known non-blocking warning:** ESLint reports 2
-`react-hooks/incompatible-library` warnings (React Hook Form's `watch()` /
-`useForm()` API, which React Compiler skips memoizing). These are informational,
-pre-existing, and do not affect the build or runtime behaviour.
+> PHPUnit reports `PHPUnit Deprecations` (517 across the full suite). These are
+> **PHPUnit-level deprecation notices about the test code itself**, not test
+> failures and not PHP runtime deprecations: `Tests:` and `Assertions:` are
+> reported alongside `Failures`/`Errors` counts, both of which are 0.
+
+**Known non-blocking issues:**
+
+* ESLint reports **2 errors** in `frontend/server.js`
+  (`@typescript-eslint/no-require-imports` on lines 1 and 2). That file is a
+  CommonJS Node entry point, so `require()` is the correct construct there; the
+  rule is aimed at browser code. Pre-existing, outside `app/`, and does not
+  affect the build or runtime behaviour.
+* `npm audit` reports **1 critical advisory** against `next` 16.3.5
+  (GHSA-vcvr-r3jv-pc5j, RCE in `next/og` `ImageResponse`). The fix requires
+  `next@16.3.8`, which is outside the project's pinned range — **applying it is
+  a deliberate dependency decision, not an audit cleanup**, and has not been
+  done here. `next/og` is not used by this application (no `ImageResponse`
+  import exists), but the version should be upgraded in a dedicated step.
 
 - [ ] **Verify stock DECREASED** by the sold quantity
 - [ ] The sale and its payment record exist; receipt renders

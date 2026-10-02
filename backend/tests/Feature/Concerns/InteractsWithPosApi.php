@@ -103,15 +103,25 @@ trait InteractsWithPosApi
      * business, because `User::permissions()` only counts roles whose
      * `business_id` matches the user's — a role from another tenant would grant
      * nothing at all.
+     *
+     * The rows are created from {@see PermissionService::catalogueSlugs()} — the
+     * canonical slug of every capability — rather than from the capability names
+     * themselves. The two are almost always the same string, but not always: the
+     * stock-adjustment and cash-movement capabilities are named `inventory.manage`
+     * and `cash_registers.manage` while their permissions are `inventory.adjust`
+     * and `cash_registers.transactions.create`. Granting the capability name
+     * verbatim would plant a row the resolver does not read, and every operational
+     * endpoint in the suite would 403 for a user who was supposed to have full
+     * access.
      */
     protected function grantAllCapabilities(User $user): Role
     {
         $permissionIds = [];
 
-        foreach (PermissionService::ALL_CAPABILITIES as $capability) {
+        foreach (PermissionService::catalogueSlugs() as $slug) {
             $permissionIds[] = Permission::firstOrCreate(
-                ['slug' => $capability],
-                ['name' => ucfirst(str_replace(['.', '_'], ' ', $capability))],
+                ['slug' => $slug],
+                ['name' => ucfirst(str_replace(['.', '_'], ' ', $slug))],
             )->id;
         }
 

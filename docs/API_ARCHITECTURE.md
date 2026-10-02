@@ -271,6 +271,68 @@ Services — and adds exactly one new concept: **capabilities**.
 route middleware all resolve through the same Gate, so they cannot disagree.
 Nothing re-implements permission logic in a controller.
 
+### Per-user permission overrides (`user_permissions`)
+
+A role grants permissions to a group of people; an **override** grants or revokes
+one capability for one individual account, inside one business. Overrides live in
+the `user_permissions` table (`business_id`, `user_id`, `permission_id`, `effect`)
+and are managed by `App\Services\UserPermission\UserPermissionService` through
+`UserPermissionController`.
+
+**Precedence — a DENY always wins:**
+
+```
+USER DENY  >  USER ALLOW  >  ROLE  >  NO ACCESS
+```
+
+Expressed as the formula `User::effectivePermissionSlugs()` implements:
+
+```
+effective = (role permissions  ∪  user ALLOW)  −  user DENY
+```
+
+* **DENY** — subtracted last, so it beats every other source. A role grant and an
+  ALLOW cannot re-add a denied slug.
+* **ALLOW** — added to the role grants, so it can grant a capability no role in
+  the business provides.
+* **ROLE** — the ordinary case; with no overrides the effective set is exactly
+  the role-derived slugs, so role-based authorization is unchanged.
+* **NO ACCESS** — a slug in none of the above is simply absent; the capability's
+  Gate ability returns false and the route answers `403`.
+
+Overrides are resolved by `PermissionService::grants()` through the same Gate as
+role permissions, so a check cannot pass through one path and fail through the
+other. Both the role query and the override query are memoised per model
+instance, so N capability checks cost at most two queries.
+
+**Ownership rules** (all enforced server-side; none trusts the request body):
+
+1. the target user must be in the **authenticated** caller's business — a user
+   of another tenant is a `404`, never a `403`;
+2. `business_id` is taken from the token, never from the payload or query
+   string, so an override cannot be written into another tenant;
+3. a user may **not manage their own overrides** — an ALLOW would hand them a
+   capability the API has just proved they lack. There is deliberately no
+   owner/super-admin exception;
+4. every referenced `permission_id` must exist in the global catalogue;
+5. override rows whose `business_id` differs from the user's are ignored during
+   authorization, so a manually inserted cross-tenant row is inert.
+
+Endpoints (all `auth:sanctum` + `active` + `can:users.roles.update` — managing an
+override *is* managing what the account may do, so it reuses the capability that
+already guards `/users/{user}/roles` and introduces no new slug):
+
+| Method | Path | Action |
+| ------ | ---- | ------ |
+| `GET` | `/users/{user}/permission-overrides` | List the target's stored overrides |
+| `POST` | `/users/{user}/permission-overrides` | Create or update one override |
+| `PUT`/`PATCH` | `/users/{user}/permission-overrides` | Replace the whole set |
+| `DELETE` | `/users/{user}/permission-overrides/{permission}` | Remove one override |
+
+`{user}` and `{permission}` are raw ids — the user is resolved
+business-scoped, so another tenant's user is a plain `404`, and `{permission}` is
+a global catalogue id validated against `permissions`.
+
 ### Permission naming
 
 The `permissions` table is a **global** catalogue (no `business_id`): a
@@ -279,75 +341,76 @@ own roles. Permissions are therefore **read-only over the API** — there is no
 create/update/delete, because exposing CRUD would let any caller mutate a global
 catalogue that is not a tenant-level concern.
 
-The API authorises against fine-grained capability names, while the pre-existing
-seeded catalogue uses the coarser `<resource>.manage` convention. Rather than
-inventing a second naming system or forcing a reseed, **each capability accepts
-either** slug:
+Every capability resolves through exactly **one** canonical permission slug, and
+for almost all of them the slug is the capability name. The two exceptions name
+the action rather than the resource:
 
-| Capability | Accepted permission slugs |
+| Capability | Accepted permission slug |
 | ---------- | ------------------------- |
-| `roles.view` | `roles.view`, `roles.manage` |
-| `roles.create` | `roles.create`, `roles.manage` |
-| `roles.update` | `roles.update`, `roles.manage` |
-| `roles.delete` | `roles.delete`, `roles.manage` |
-| `permissions.view` | `permissions.view`, `roles.manage` |
-| `users.roles.update` | `users.roles.update`, `users.manage`, `roles.manage` |
-| `settings.view` | `settings.view`, `settings.manage` |
-| `settings.update` | `settings.update`, `settings.manage` |
-| `categories.view` / `.create` / `.update` / `.delete` | same slug, plus `categories.manage` |
-| `products.view` / `.create` / `.update` / `.delete` | same slug, plus `products.manage` |
-| `inventory.view` | `inventory.view`, `inventory.manage` |
-| `inventory.manage` | `inventory.manage` (stock adjustment) |
-| `customers.view` / `.create` / `.update` / `.delete` | same slug, plus `customers.manage` |
-| `suppliers.view` / `.create` / `.update` / `.delete` | same slug, plus `suppliers.manage` |
-| `purchases.view` / `.create` / `.update` / `.delete` | same slug, plus `purchases.manage` |
-| `sales.view` / `.create` / `.update` / `.delete` | same slug, plus `sales.manage` |
-| `sales.payments.create` | `sales.payments.create`, `sales.manage` |
-| `sale_returns.view` / `.create` | same slug, plus `sale_returns.manage` |
-| `expenses.view` / `.create` / `.update` / `.delete` | same slug, plus `expenses.manage` |
-| `expense_categories.view` / `.create` / `.update` / `.delete` | same slug, plus `expense_categories.manage`, `expenses.manage` |
-| `cash_registers.view` / `.create` / `.update` | same slug, plus `cash_registers.manage` |
-| `cash_registers.manage` | `cash_registers.manage` (cash in / cash out) |
+| `roles.view` / `.create` / `.update` / `.delete` | same slug |
+| `permissions.view` | `permissions.view` |
+| `users.view` / `.create` / `.update` | same slug |
+| `users.roles.update` | `users.roles.update` |
+| `settings.view` / `.update` | same slug |
+| `categories.*`, `products.*`, `customers.*`, `suppliers.*`, `purchases.*` | same slug |
+| `inventory.view` | `inventory.view` |
+| **`inventory.manage`** | **`inventory.adjust`** (stock adjustment) |
+| `sales.*`, `sale_returns.*`, `expenses.*`, `expense_categories.*` | same slug |
+| `sales.payments.create` | `sales.payments.create` |
+| `cash_registers.view` / `.create` / `.update` | same slug |
+| **`cash_registers.manage`** | **`cash_registers.transactions.create`** (cash in / out) |
 | `reports.view` | `reports.view` (reports are read-only) |
 
-**The effective rule:** a pre-existing `<resource>.manage` row authorises the
-whole domain, exactly as it did before enforcement. A role seeded with only
-`products.manage` keeps full product access; a role granted the newer
-`products.view` can additionally be restricted to reading. The fine-grained rows
-are an *option*, never a requirement, so no existing installation loses
-functionality.
+**The effective rule:** a capability is authorised by its own permission, and by
+nothing else. The coarse `<resource>.manage` rows the original catalogue shipped
+with are no longer accepted by any capability; the fine-grained rows they stood
+for were materialised for every affected role before that happened, so no
+installation lost functionality when the alias table was retired. A row left over
+in the database by a not-yet-cleaned-up installation is inert: it authorises
+nothing.
 
-Two capabilities keep their coarse slug as the canonical name because that row
-already exists and means exactly the right thing: `inventory.manage` (a stock
-adjustment bypasses the purchase/sale flow) and `cash_registers.manage` (a manual
-cash movement). Naming them `inventory.adjust` / `cash_registers.cash_in` would
-add rows that mean the same as one already installed.
+`inventory.manage` and `cash_registers.manage` keep their names — they are the
+`can:` middleware arguments in `routes/api.php` and the values the client
+compares against in the `capabilities` list, so they are API surface and cannot
+be renamed. What *is* free to change is the permission behind them, and a manual
+stock adjustment and a manual cash movement are both writes that are not CRUD
+verbs. Hence `inventory.adjust` and `cash_registers.transactions.create`.
 
-`sales.payments.create` is separate from `sales.manage` on purpose: taking money
-is not the same authority as being able to raise or amend a sale, so a cashier
-who may collect payment need not be able to create sales.
+`sales.payments.create` is a separate capability on its own terms: taking money is
+not the same authority as being able to raise or amend a sale, so a cashier who
+may collect payment need not be able to create sales. It is no longer reachable
+through `sales.manage`.
 
-`RolesAndPermissionsSeeder` seeds both sets and is idempotent (re-runnable
-without violating the unique indexes on `permissions.slug`, `roles.slug` and
-`permission_role`). Grants are additive: re-seeding adds missing pairs and never
-revokes one.
+`RolesAndPermissionsSeeder` seeds exactly the canonical slug of every capability —
+derived from `PermissionService::catalogueSlugs()`, so a capability added there is
+seeded automatically and the seeder cannot drift into creating a permission
+nothing authorises. It is idempotent (re-runnable without violating the unique
+indexes on `permissions.slug`, `roles.slug` and `permission_role`). Grants are
+additive: re-seeding adds missing pairs and never revokes one.
 
 ### Seeded role matrix
 
 `RolesAndPermissionsSeeder` creates `admin`, `manager`, `salesman` and
 `accountant` for every business. **There is no `cashier` role** — the till-facing
-seeded role is `salesman`. The grants below are derived from each role's own
-description in the seeder, using the coarse rows:
+seeded role is `salesman`. The grants below are the explicit fine-grained
+permissions each role receives:
 
-| Role | Grants | Description |
-| ---- | ------ | ----------- |
-| `admin` | the entire catalogue | "Full access to all features" |
-| `manager` | products, categories, inventory, sales, sale returns, purchases, customers, suppliers, expenses, cash registers, `reports.view` | "Manage products, sales, purchases, and reports" |
-| `salesman` | products, categories, sales, customers, cash registers | "Handle sales and customer management" |
-| `accountant` | purchases, suppliers, expenses, expense categories, `sales.payments.create`, `reports.view` | "Manage purchases, expenses, and payments" |
+| Role | Effective capabilities | Description |
+| ---- | ---------------------- | ----------- |
+| `admin` | 53 — the entire catalogue | "Full access to all features" |
+| `manager` | 42 — products, categories, inventory (incl. `inventory.adjust`), sales (incl. `sales.payments.create`), sale returns, purchases, customers, suppliers, expenses, expense categories, cash registers (incl. `cash_registers.transactions.create`), `reports.view` | "Manage products, sales, purchases, and reports" |
+| `salesman` | 21 — products, categories, sales (incl. `sales.payments.create`), customers, cash registers (incl. `cash_registers.transactions.create`) | "Handle sales and customer management" |
+| `accountant` | 18 — purchases, suppliers, expenses, expense categories, `sales.payments.create`, `reports.view` | "Manage purchases, expenses, and payments" |
 
-The accountant deliberately does **not** receive `sales.manage`: it may take
+The accountant deliberately does **not** receive `sales.create`: it may take
 payment against a sale without being able to create one.
+
+The manager's grant list mentions two domains its description does not —
+expense categories and `sales.payments.create`. Both are inherited, not new: the
+coarse `expenses.manage` row it used to receive was an alias for
+`expense_categories.*` as well as `expenses.*`, and its `sales.manage` row was an
+alias for `sales.payments.create`. Dropping either would make a freshly seeded
+manager weaker than an upgraded one.
 
 Before P1-2 these roles were created but granted nothing. That was harmless
 while the operational endpoints accepted any authenticated user; granting them
@@ -509,8 +572,26 @@ timestamps:
 * `tests/Feature/Settings/SettingsApiTest.php` — isolation, secrets, reserved keys.
 * `tests/Feature/Authorization/RolePermissionAuthorizationTest.php` — 401/403/404
   per endpoint category and permission-resolution rules.
+* `tests/Feature/Authorization/OperationalPermissionTest.php` — every operational
+  route is guarded by the capability it needs.
+* `tests/Feature/Authorization/AuthorizationSecurityAuditTest.php` — no live
+  route resolves through a retired permission slug; the catalogue, the Gate and
+  the route table agree.
+* `tests/Feature/Authorization/UserPermissionOverrideTest.php` — the override
+  endpoints, including self-management and cross-tenant refusal.
+* `tests/Feature/Authorization/UserPermissionOverrideResolutionTest.php` — the
+  `DENY > ALLOW > ROLE > NO ACCESS` precedence and tenant-scoped override rows.
+* `tests/Feature/Authorization/SeededRoleRegressionTest.php` — the seeded role
+  matrix (53 / 42 / 21 / 18) does not drift.
+* `tests/Feature/UserPermission/UserPermissionOverrideApiTest.php` — end-to-end
+  override management through the HTTP API.
+* `tests/Feature/Migration/CoarseManagePermissionExpansionMigrationTest.php` —
+  STEP 5 materialises the fine-grained grants before the coarse rows are retired.
+* `tests/Feature/Migration/CoarseManagePermissionRemovalMigrationTest.php` —
+  STEP 7 migrates affected overrides and drops the coarse rows.
 
-Run with `php artisan test`. Route inventory: `php artisan route:list --path=api`.
+Run with `vendor/bin/phpunit` (or `php artisan test`). Route inventory:
+`php artisan route:list --path=api`.
 
 > Test note: `Auth::forgetGuards()` is called by the
 > `InteractsWithPermissions` fixture whenever the acting identity changes.

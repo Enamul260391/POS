@@ -58,7 +58,7 @@ class PermissionApiTest extends TestCase
     /** @test */
     public function permissions_can_be_listed(): void
     {
-        $this->permissionsBySlug(['roles.view', 'roles.update', 'sales.manage']);
+        $this->permissionsBySlug(['roles.view', 'roles.update', 'sales.create']);
 
         $response = $this->getJson('/api/v1/permissions');
 
@@ -79,7 +79,7 @@ class PermissionApiTest extends TestCase
     /** @test */
     public function permissions_can_be_searched(): void
     {
-        $this->permissionsBySlug(['roles.view', 'sales.manage', 'purchases.manage']);
+        $this->permissionsBySlug(['roles.view', 'sales.create', 'purchases.create']);
 
         $response = $this->getJson('/api/v1/permissions?search=roles');
 

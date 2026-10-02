@@ -37,8 +37,9 @@ class RoleApiTest extends TestCase
         $this->otherBusiness = Business::factory()->create();
 
         // Every permission the role endpoints require, so each test can drop the
-        // one it is actually asserting on.
-        $this->user = $this->userWithPermissions(PermissionService::ALL_CAPABILITIES, $this->business->id);
+        // one it is actually asserting on. `catalogueSlugs()` rather than the
+        // capability names: the rows must be the slugs the resolver reads.
+        $this->user = $this->userWithPermissions(PermissionService::catalogueSlugs(), $this->business->id);
     }
 
     /** @test */

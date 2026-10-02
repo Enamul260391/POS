@@ -61,6 +61,20 @@ class User extends Authenticatable
     }
 
     /**
+     * This user's own permission overrides (allow/deny), across all businesses.
+     *
+     * Rows whose `business_id` differs from this user's are ignored during
+     * authorization (see `effectivePermissionSlugs()`), so a cross-business row
+     * can never change what the user may do.
+     *
+     * @return HasMany<UserPermission>
+     */
+    public function permissionOverrides(): HasMany
+    {
+        return $this->hasMany(UserPermission::class);
+    }
+
+    /**
      * Every permission the user holds, through the user's own roles.
      *
      * `role_user` / `permission_role` are joined in a single query and the
@@ -107,7 +121,11 @@ class User extends Authenticatable
     }
 
     /**
-     * Permission slugs granted to this user.
+     * Permission slugs granted to this user through their roles.
+     *
+     * These are the role-derived slugs only. Authorization uses
+     * {@see self::effectivePermissionSlugs()}, which also folds in the user's
+     * ALLOW/DENY overrides.
      *
      * Derived from the already-eager/memoised `permissions()` relation, so a
      * repeated check inside one request performs no additional query. The memo
@@ -119,6 +137,103 @@ class User extends Authenticatable
     public function permissionSlugs(): array
     {
         return $this->permissions()->pluck('slug')->all();
+    }
+
+    /**
+     * Permission slugs the user effectively holds.
+     *
+     * `Effective = (role permissions ∪ user ALLOW) − user DENY`, so a DENY
+     * always wins and an ALLOW can grant a slug that no role provides. With no
+     * overrides this is exactly `permissionSlugs()`, leaving role-based
+     * authorization untouched.
+     *
+     * Both the role query and the override query are memoised on the model
+     * instance, so many capability checks cost at most two queries rather than
+     * one per check.
+     *
+     * @return array<int, string>
+     */
+    public function effectivePermissionSlugs(): array
+    {
+        $overrides = $this->tenantPermissionOverrides();
+
+        if ($overrides->isEmpty()) {
+            return $this->permissionSlugs();
+        }
+
+        $allow = $overrides
+            ->where('effect', UserPermission::EFFECT_ALLOW)
+            ->pluck('permission.slug')
+            ->filter()
+            ->all();
+
+        $deny = $overrides
+            ->where('effect', UserPermission::EFFECT_DENY)
+            ->pluck('permission.slug')
+            ->filter()
+            ->all();
+
+        return array_values(array_diff(
+            array_unique(array_merge($this->permissionSlugs(), $allow)),
+            $deny,
+        ));
+    }
+
+    /**
+     * Slugs explicitly DENIED to the user by a tenant-valid override.
+     *
+     * @return array<int, string>
+     */
+    public function deniedPermissionSlugs(): array
+    {
+        return $this->tenantPermissionOverrides()
+            ->where('effect', UserPermission::EFFECT_DENY)
+            ->pluck('permission.slug')
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * The user's overrides that belong to their own business.
+     *
+     * A `user_permissions` row only carries authority inside the business that
+     * owns it, so rows whose `business_id` differs from the user's are dropped:
+     * a manually inserted cross-business row can neither grant nor revoke
+     * anything here. The collection is memoised on the instance (via the
+     * `permissionOverrides` relation), so resolving many capabilities reads it
+     * at most once.
+     *
+     * @return Collection<int, UserPermission>
+     */
+    private function tenantPermissionOverrides()
+    {
+        $overrides = $this->relationLoaded('permissionOverrides')
+            ? $this->getRelation('permissionOverrides')
+            : $this->loadTenantPermissionOverrides();
+
+        $overrides->loadMissing('permission');
+
+        return $overrides->filter(
+            fn (UserPermission $override): bool => (int) $override->business_id === (int) $this->business_id
+        );
+    }
+
+    /**
+     * Load the user's own overrides inside their business and memoise them.
+     *
+     * @return Collection<int, UserPermission>
+     */
+    private function loadTenantPermissionOverrides()
+    {
+        $overrides = $this->permissionOverrides()
+            ->where('business_id', $this->business_id)
+            ->with('permission')
+            ->get();
+
+        $this->setRelation('permissionOverrides', $overrides);
+
+        return $overrides;
     }
 
     /**
