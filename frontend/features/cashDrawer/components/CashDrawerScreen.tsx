@@ -16,6 +16,8 @@ import { Button } from "@/components/ui/button";
 import { CashDrawerStats } from "@/features/cashDrawer/components/CashDrawerStats";
 import { CashMovementList } from "@/features/cashDrawer/components/CashMovementList";
 import { CashMoveDialog } from "@/features/cashDrawer/components/CashMoveDialog";
+import { CashMoveDeleteDialog } from "@/features/cashDrawer/components/CashMoveDeleteDialog";
+import { CashMoveEditDialog } from "@/features/cashDrawer/components/CashMoveEditDialog";
 import { CloseRegisterDialog } from "@/features/cashDrawer/components/CloseRegisterDialog";
 import { OpenRegisterDialog } from "@/features/cashDrawer/components/OpenRegisterDialog";
 import { formatMoney } from "@/features/pos/lib/format";
@@ -61,6 +63,11 @@ export function CashDrawerScreen() {
   const [openOpen, setOpenOpen] = useState(false);
   const [moveKind, setMoveKind] = useState<"cash_in" | "cash_out" | null>(null);
   const [closeOpen, setCloseOpen] = useState(false);
+  // The manual cash movement currently being amended or removed. Null means no
+  // dialog is open; which of the two is in use follows from which setter was
+  // called, so a row can never be in both dialogs at once.
+  const [editing, setEditing] = useState<CashRegisterTransaction | null>(null);
+  const [deleting, setDeleting] = useState<CashRegisterTransaction | null>(null);
 
   // One read per visit. The store's own `runId` guard makes a Strict Mode
   // double-mount harmless: the first run is discarded rather than duplicating
@@ -95,6 +102,10 @@ export function CashDrawerScreen() {
       setOpenOpen={setOpenOpen}
       setMoveKind={setMoveKind}
       setCloseOpen={setCloseOpen}
+      setEditing={setEditing}
+      setDeleting={setDeleting}
+      editing={editing}
+      deleting={deleting}
     />
   );
 }
@@ -112,6 +123,12 @@ type DrawerProps = {
   setOpenOpen: (open: boolean) => void;
   setMoveKind: (kind: "cash_in" | "cash_out" | null) => void;
   setCloseOpen: (open: boolean) => void;
+  setEditing: (transaction: CashRegisterTransaction | null) => void;
+  setDeleting: (transaction: CashRegisterTransaction | null) => void;
+  /** The movement whose amendment dialog is open, if any. */
+  editing: CashRegisterTransaction | null;
+  /** The movement whose removal dialog is open, if any. */
+  deleting: CashRegisterTransaction | null;
 };
 
 function CashDrawerContent({
@@ -127,6 +144,10 @@ function CashDrawerContent({
   setOpenOpen,
   setMoveKind,
   setCloseOpen,
+  setEditing,
+  setDeleting,
+  editing,
+  deleting,
 }: DrawerProps) {
   if (register === null) {
     return (
@@ -254,7 +275,12 @@ function CashDrawerContent({
         </div>
       )}
 
-      <CashMovementList transactions={transactions} isLoading={isLoading} />
+      <CashMovementList
+        transactions={transactions}
+        isLoading={isLoading}
+        onEdit={setEditing}
+        onDelete={setDeleting}
+      />
 
       {openOpen && (
         <OpenRegisterDialog onOpenChange={(open) => !open && setOpenOpen(false)} />
@@ -269,6 +295,18 @@ function CashDrawerContent({
         <CloseRegisterDialog
           expected={expected}
           onOpenChange={(open) => !open && setCloseOpen(false)}
+        />
+      )}
+      {editing !== null && (
+        <CashMoveEditDialog
+          transaction={editing}
+          onOpenChange={(open) => !open && setEditing(null)}
+        />
+      )}
+      {deleting !== null && (
+        <CashMoveDeleteDialog
+          transaction={deleting}
+          onOpenChange={(open) => !open && setDeleting(null)}
         />
       )}
     </section>

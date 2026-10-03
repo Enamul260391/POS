@@ -214,8 +214,8 @@ class SeededRoleRegressionTest extends TestCase
         }
 
         $this->assertSame(count(PermissionService::ALL_CAPABILITIES), $counts['admin']);
-        $this->assertSame(42, $counts['manager']);
-        $this->assertSame(21, $counts['salesman']);
+        $this->assertSame(44, $counts['manager']);
+        $this->assertSame(23, $counts['salesman']);
         $this->assertSame(18, $counts['accountant']);
     }
 

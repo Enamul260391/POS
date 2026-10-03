@@ -3,12 +3,20 @@ import type { ApiRequestConfig, PaginatedData } from "@/lib/api/request";
 import type {
   User,
   UserPayload,
+  UserPermissionOverride,
+  UserPermissionOverrideInput,
+  UserPermissionOverridesPayload,
   UserRoleOption,
   UserRolePayload,
   UserStatus,
 } from "@/types/user";
 
-import { toUser, toUserRole, toUsers } from "../lib/userMapper";
+import {
+  toUser,
+  toUserPermissionOverrides,
+  toUserRole,
+  toUsers,
+} from "../lib/userMapper";
 
 /**
  * User service — the only module that talks to `/users`.
@@ -143,4 +151,55 @@ export async function updateUser(
     toUserBody(input),
   );
   return toUser(payload);
+}
+
+/**
+ * `GET /users/{id}/permission-overrides` — the target user's stored overrides.
+ *
+ * Only rows with an effect the model declares are returned, so a value this
+ * screen did not recognise never reaches the editor.
+ */
+export async function listUserPermissionOverrides(
+  userId: number,
+  config?: ApiRequestConfig,
+): Promise<UserPermissionOverride[]> {
+  const payload = await apiGet<UserPermissionOverridesPayload>(
+    `/users/${userId}/permission-overrides`,
+    { signal: config?.signal },
+  );
+  return toUserPermissionOverrides(payload);
+}
+
+/**
+ * `PUT|PATCH /users/{id}/permission-overrides` — replaces the whole set.
+ *
+ * The list is the *complete* desired state, so an empty array removes every
+ * override and any permission left out of it is cleared. Entries are
+ * de-duplicated by `permission_id` before sending: the API rejects a repeat with
+ * a `422` (`distinct`), and the `user_permissions` unique index would refuse the
+ * second row anyway.
+ */
+export async function syncUserPermissionOverrides(
+  userId: number,
+  overrides: readonly UserPermissionOverrideInput[],
+): Promise<UserPermissionOverride[]> {
+  const seen = new Set<number>();
+  const items = overrides.filter((override) => {
+    if (seen.has(override.permissionId)) {
+      return false;
+    }
+    seen.add(override.permissionId);
+    return true;
+  });
+
+  const payload = await apiPatch<UserPermissionOverridesPayload>(
+    `/users/${userId}/permission-overrides`,
+    {
+      overrides: items.map((override) => ({
+        permission_id: override.permissionId,
+        effect: override.effect,
+      })),
+    },
+  );
+  return toUserPermissionOverrides(payload);
 }

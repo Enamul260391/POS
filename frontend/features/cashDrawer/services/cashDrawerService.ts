@@ -1,4 +1,4 @@
-import { apiGet, apiList, apiPost } from "@/lib/api/request";
+import { apiDelete, apiGet, apiList, apiPatch, apiPost } from "@/lib/api/request";
 import type { ApiRequestConfig, PaginatedData } from "@/lib/api/request";
 import type { ApiError } from "@/types/api";
 import type {
@@ -161,6 +161,77 @@ export async function recordManualTransaction(
     { type: input.type, amount: input.amount, note: input.note ?? null },
   );
   return toCashTransaction(payload);
+}
+/**
+ * Body of `PATCH /cash-registers/{register}/transactions/{transaction}`.
+ *
+ * Every field is optional, so the dialog can amend the note alone without
+ * restating the amount — the API applies exactly what is sent and leaves the
+ * rest of the row alone.
+ *
+ * Only the three fields the manual endpoint ever writes are accepted here:
+ * `type`, `amount` and `note`. There is deliberately no `businessId`,
+ * `registerId` or reference field, so the client cannot forge ownership or turn
+ * a manual movement into a reference-linked automatic one.
+ */
+export interface ManualTransactionEditInput {
+  type?: "cash_in" | "cash_out";
+  amount?: number;
+  note?: string | null;
+}
+
+/**
+ * `PATCH /cash-registers/{register}/transactions/{transaction}` — amend a
+ * manual cash in / cash out.
+ *
+ * Like the create, this is only ever for a movement a human typed in. The API
+ * re-checks that classification, so calling it for a sale or expense row is
+ * refused there regardless of what the UI believed; hiding the button is a
+ * convenience, not the control.
+ *
+ * No balance is returned or computed here. The store re-reads the register and
+ * its summary afterwards, so the figure shown next is the server's own
+ * recomputed aggregate.
+ */
+export async function updateManualTransaction(
+  registerId: number,
+  transactionId: number,
+  input: ManualTransactionEditInput,
+): Promise<CashRegisterTransaction> {
+  const body: Record<string, unknown> = {};
+
+  if (input.type !== undefined) {
+    body.type = input.type;
+  }
+  if (input.amount !== undefined) {
+    body.amount = input.amount;
+  }
+  if (input.note !== undefined) {
+    body.note = input.note;
+  }
+
+  const payload = await apiPatch<CashRegisterTransactionPayload>(
+    `/cash-registers/${registerId}/transactions/${transactionId}`,
+    body,
+  );
+  return toCashTransaction(payload);
+}
+
+/**
+ * `DELETE /cash-registers/{register}/transactions/{transaction}` — remove a
+ * manual cash in / cash out.
+ *
+ * Subject to the same manual-only rule as the amendment, and to the same
+ * capability separation: this needs `cash_registers.transactions.delete`, which
+ * is neither the create nor the update slug.
+ */
+export async function deleteManualTransaction(
+  registerId: number,
+  transactionId: number,
+): Promise<void> {
+  await apiDelete<null>(
+    `/cash-registers/${registerId}/transactions/${transactionId}`,
+  );
 }
 
 /** `POST /cash-registers/open` — opens a register with the counted float. */

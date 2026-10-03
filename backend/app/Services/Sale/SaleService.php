@@ -180,6 +180,7 @@ final class SaleService
                     'product_id' => $line['product']->getKey(),
                     'quantity' => $line['quantity'],
                     'unit_price' => $line['unit_price'],
+                    'unit_cost' => $line['unit_cost'],
                     'discount' => $line['discount'],
                     'tax' => $line['tax'],
                     'total' => $line['total'],
@@ -346,7 +347,11 @@ final class SaleService
                 'product' => $product,
                 'quantity' => $quantity,
                 'unit_price' => $unitPrice,
-                'discount' => $discount,
+                // Snapshot of the product's cost at the moment of the sale, so a
+                // historical profit report reads the cost that was actually
+                // incurred rather than whatever the product costs today.
+                'unit_cost' => Money Cost::format($product->cost_price),
+                'discount' =>  discount,
                 'tax' => $tax,
                 'total' => Money::add(Money::subtract($lineGross, $discount), $tax),
             ];

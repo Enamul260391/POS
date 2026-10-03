@@ -97,6 +97,8 @@ class OperationalPermissionTest extends TestCase
         PermissionService::CASH_REGISTERS_CREATE => ['POST', '/api/v1/cash-registers/open'],
         PermissionService::CASH_REGISTERS_UPDATE => ['POST', '/api/v1/cash-registers/{id}/close'],
         PermissionService::CASH_REGISTERS_MANAGE => ['POST', '/api/v1/cash-registers/{id}/transactions'],
+        PermissionService::CASH_REGISTERS_TRANSACTIONS_UPDATE => ['PUT', '/api/v1/cash-registers/{id}/transactions/{id}'],
+        PermissionService::CASH_REGISTERS_TRANSACTIONS_DELETE => ['DELETE', '/api/v1/cash-registers/{id}/transactions/{id}'],
 
         PermissionService::REPORTS_VIEW => ['GET', '/api/v1/reports/dashboard'],
 

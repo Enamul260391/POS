@@ -135,7 +135,7 @@ class AuthorizationSecurityAuditTest extends TestCase
     /**
      * @test
      *
-     * The route surface and the capability table agree exactly — 53 each, no
+     * The route surface and the capability table agree exactly — 55 each, no
      * capability that nothing routes, no route capability nothing declares.
      *
      * Asserted as an equality of two sets rather than as two counts, so a
@@ -151,7 +151,7 @@ class AuthorizationSecurityAuditTest extends TestCase
         sort($expected);
 
         $this->assertSame($expected, $routed);
-        $this->assertCount(53, $routed, 'The 53-capability route contract must remain intact.');
+        $this->assertCount(55, $routed, 'The 55-capability route contract must remain intact.');
     }
 
     /**

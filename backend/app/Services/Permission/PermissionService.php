@@ -269,6 +269,37 @@ final class PermissionService
     public const CASH_REGISTERS_TRANSACTIONS_CREATE = 'cash_registers.transactions.create';
 
     /**
+     * Amend a manual cash in / cash out that was already recorded.
+     *
+     * A sibling of {@see CASH_REGISTERS_TRANSACTIONS_CREATE}, not a replacement
+     * for it: recording a movement and correcting one are separate decisions, so
+     * a role that may open the drawer need not be able to rewrite its history.
+     *
+     * The slug is identical to the capability name, because unlike
+     * {@see CASH_REGISTERS_MANAGE} this write *is* an ordinary CRUD verb and
+     * nothing about it is API surface that must be preserved.
+     *
+     * The rule it authorises is deliberately narrow: only rows the API
+     * classifies as manual (`CashRegisterTransaction::MANUAL_TYPES` with no
+     * reference) are eligible. A sale- or expense-generated movement is owned by
+     * the flow that wrote it and is refused here regardless of the grant.
+     */
+    public const CASH_REGISTERS_TRANSACTIONS_UPDATE = 'cash_registers.transactions.update';
+
+    /**
+     * Remove a manual cash in / cash out that was already recorded.
+     *
+     * The narrowest capability in the catalogue for the same reason as
+     * {@see CASH_REGISTERS_TRANSACTIONS_UPDATE}: it removes a row from the
+     * drawer's ledger, and only a manual one. Automatic movements are never
+     * deletable through it — deleting a cash sale would silently unbalance the
+     * sale and the drawer against each other.
+     *
+     * Identical to its capability name; no alias is involved.
+     */
+    public const CASH_REGISTERS_TRANSACTIONS_DELETE = 'cash_registers.transactions.delete';
+
+    /**
      * Read the reporting suite (dashboard, sales, purchases, expenses,
      * profit-loss and inventory).
      *
@@ -368,6 +399,8 @@ final class PermissionService
         self::CASH_REGISTERS_CREATE => [self::CASH_REGISTERS_CREATE],
         self::CASH_REGISTERS_UPDATE => [self::CASH_REGISTERS_UPDATE],
         self::CASH_REGISTERS_MANAGE => [self::CASH_REGISTERS_TRANSACTIONS_CREATE],
+        self::CASH_REGISTERS_TRANSACTIONS_UPDATE => [self::CASH_REGISTERS_TRANSACTIONS_UPDATE],
+        self::CASH_REGISTERS_TRANSACTIONS_DELETE => [self::CASH_REGISTERS_TRANSACTIONS_DELETE],
 
         self::REPORTS_VIEW => [self::REPORTS_VIEW],
     ];
@@ -463,6 +496,8 @@ final class PermissionService
         self::CASH_REGISTERS_CREATE,
         self::CASH_REGISTERS_UPDATE,
         self::CASH_REGISTERS_MANAGE,
+        self::CASH_REGISTERS_TRANSACTIONS_UPDATE,
+        self::CASH_REGISTERS_TRANSACTIONS_DELETE,
         self::REPORTS_VIEW,
     ];
 

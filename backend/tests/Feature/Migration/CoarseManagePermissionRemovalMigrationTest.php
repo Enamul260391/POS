@@ -1300,7 +1300,20 @@ class CoarseManagePermissionRemovalMigrationTest extends TestCase
         // `reports.view` — no coarse permission implied it, which is exactly why
         // `reports.manage` was a dead alias. The set is therefore identical to the
         // full catalogue minus that one, and not merely "nearly everything".
-        $expected = array_values(array_diff(PermissionService::ALL_CAPABILITIES, [PermissionService::REPORTS_VIEW]));
+        //
+        // The two cash-movement corrections are excluded for the same reason:
+        // they were introduced *after* the coarse convention was retired, so no
+        // `<resource>.manage` row ever implied them. A pre-expansion install
+        // genuinely could not hold them, and the migration must not invent the
+        // grants retroactively — that is the seeder's additive job.
+        $expected = array_values(array_diff(
+            PermissionService::ALL_CAPABILITIES,
+            [
+                PermissionService::REPORTS_VIEW,
+                PermissionService::CASH_REGISTERS_TRANSACTIONS_UPDATE,
+                PermissionService::CASH_REGISTERS_TRANSACTIONS_DELETE,
+            ],
+        ));
         sort($expected);
 
         $this->assertSame($expected, $before['every coarse permission']);
@@ -1331,7 +1344,7 @@ class CoarseManagePermissionRemovalMigrationTest extends TestCase
         $business = Business::factory()->create();
         Artisan::call('db:seed', ['--class' => RolesAndPermissionsSeeder::class]);
 
-        $this->assertSame(53, DB::table('permissions')->count());
+        $this->assertSame(count(PermissionService::catalogueSlugs()), DB::table('permissions')->count());
 
         foreach (DB::table('permissions')->pluck('slug') as $slug) {
             $this->assertNotSame('reports.manage', $slug);
@@ -1344,7 +1357,7 @@ class CoarseManagePermissionRemovalMigrationTest extends TestCase
 
         $this->assertSame($before, DB::table('permissions')->count());
 
-        $expected = ['admin' => 53, 'manager' => 42, 'salesman' => 21, 'accountant' => 18];
+        $expected = ['admin' => count(PermissionService::catalogueSlugs()), 'manager' => 44, 'salesman' => 23, 'accountant' => 18];
 
         foreach ($expected as $slug => $count) {
             $role = Role::query()->where('business_id', $business->id)->where('slug', $slug)->firstOrFail();
@@ -1394,14 +1407,14 @@ class CoarseManagePermissionRemovalMigrationTest extends TestCase
         $overridesBefore = DB::table('user_permissions')->count();
         $this->assertSame(1, $overridesBefore, 'The fixture starts with exactly one coarse override.');
 
-        $this->assertSame(67, $permissionsBefore, '53 canonical permissions plus the 14 coarse rows.');
+        $this->assertSame(count(PermissionService::catalogueSlugs()) + 14, $permissionsBefore, 'The canonical catalogue plus the 14 coarse rows.');
 
         // Step 5 — the historical expansion migration, then this step.
         $this->runStepFive();
         $this->runMigration();
 
         $this->assertSame(
-            53,
+            count(PermissionService::catalogueSlugs()),
             DB::table('permissions')->count(),
             'The two migrations together must leave exactly the canonical catalogue.',
         );
@@ -1543,7 +1556,7 @@ class CoarseManagePermissionRemovalMigrationTest extends TestCase
         $this->runMigration();
 
         $this->assertSame(
-            53,
+            count(PermissionService::catalogueSlugs()),
             DB::table('permissions')->count(),
             'Only the 14 seeded coarse rows are removed; the absent dead alias costs nothing.',
         );

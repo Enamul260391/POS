@@ -126,8 +126,15 @@ class RolesAndPermissionsSeeder extends Seeder
                 // Stock: reading the ledger and correcting it.
                 'inventory.view', 'inventory.adjust',
                 // Cash drawer: reading, opening, closing, manual movements.
+                // Correcting or removing a manual movement is the same authority
+                // as recording one, so the roles that already hold
+                // `cash_registers.transactions.create` (manager and salesman
+                // below) hold the two corrections with it. The accountant has no
+                // cash-drawer capability at all and is therefore given neither.
                 'cash_registers.view', 'cash_registers.create', 'cash_registers.update',
                 'cash_registers.transactions.create',
+                'cash_registers.transactions.update',
+                'cash_registers.transactions.delete',
                 // Reporting.
                 'reports.view',
             ],
@@ -142,9 +149,12 @@ class RolesAndPermissionsSeeder extends Seeder
                 'sales.payments.create',
                 // Customers.
                 'customers.view', 'customers.create', 'customers.update', 'customers.delete',
-                // Cash drawer: reading, opening, closing, manual movements.
+                // Cash drawer: reading, opening, closing, manual movements —
+                // recording one and correcting/removing one alike.
                 'cash_registers.view', 'cash_registers.create', 'cash_registers.update',
                 'cash_registers.transactions.create',
+                'cash_registers.transactions.update',
+                'cash_registers.transactions.delete',
             ],
 
             'accountant' => [
@@ -285,6 +295,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'reports.view' => 'View Reports',
             'inventory.adjust' => 'Adjust Stock',
             'cash_registers.transactions.create' => 'Record Cash Movement',
+            'cash_registers.transactions.update' => 'Edit Cash Movement',
+            'cash_registers.transactions.delete' => 'Delete Cash Movement',
         ];
 
         return array_merge($catalogue, $names);

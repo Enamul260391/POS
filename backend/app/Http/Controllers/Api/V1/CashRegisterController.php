@@ -9,6 +9,7 @@ use App\Http\Requests\CashRegister\CashRegisterTransactionRequest;
 use App\Http\Requests\CashRegister\CloseCashRegisterRequest;
 use App\Http\Requests\CashRegister\IndexCashRegisterTransactionRequest;
 use App\Http\Requests\CashRegister\OpenCashRegisterRequest;
+use App\Http\Requests\CashRegister\UpdateCashRegisterTransactionRequest;
 use App\Http\Resources\CashRegisterResource;
 use App\Http\Resources\CashRegisterTransactionResource;
 use App\Http\Traits\ApiResponse;
@@ -48,6 +49,31 @@ class CashRegisterController extends Controller
     {
         $transaction = $this->registers->recordManual($this->businessId($request), $this->userId($request), (int) $cashRegister, $request->validated());
         return $this->success(new CashRegisterTransactionResource($transaction), 'Cash transaction recorded successfully', 201);
+    }
+
+    public function updateTransaction(UpdateCashRegisterTransactionRequest $request, string $cashRegister, string $transaction): JsonResponse
+    {
+        $updated = $this->registers->updateManual(
+            $this->businessId($request),
+            $this->userId($request),
+            (int) $cashRegister,
+            (int) $transaction,
+            $request->validated(),
+        );
+
+        return $this->success(new CashRegisterTransactionResource($updated), 'Cash transaction updated successfully');
+    }
+
+    public function destroyTransaction(Request $request, string $cashRegister, string $transaction): JsonResponse
+    {
+        $this->registers->deleteManual(
+            $this->businessId($request),
+            $this->userId($request),
+            (int) $cashRegister,
+            (int) $transaction,
+        );
+
+        return $this->success(null, 'Cash transaction deleted successfully');
     }
 
     public function close(CloseCashRegisterRequest $request, string $cashRegister): JsonResponse

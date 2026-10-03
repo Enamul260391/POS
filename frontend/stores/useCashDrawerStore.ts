@@ -2,12 +2,15 @@ import { create } from "zustand";
 
 import {
   closeRegister as closeRegisterRequest,
+  deleteManualTransaction,
   getCurrentRegister,
   getRegisterSummary,
   listTransactions,
   openRegister as openRegisterRequest,
   recordManualTransaction,
+  updateManualTransaction,
   type CloseRegisterInput,
+  type ManualTransactionEditInput,
   type ManualTransactionInput,
   type OpenRegisterInput,
 } from "@/features/cashDrawer/services/cashDrawerService";
@@ -70,6 +73,19 @@ export interface CashDrawerStore {
   closeRegister: (input: CloseRegisterInput) => Promise<CashRegister>;
   /** Records a manual cash in / cash out and re-reads everything. */
   recordCashMove: (input: ManualTransactionInput) => Promise<void>;
+  /**
+   * Amends a manual cash in / cash out and re-reads everything.
+   *
+   * The re-read is what makes the balance correct: an amended `amount` or
+   * `type` changes the server's aggregate, so the cached register, summary and
+   * history are all replaced rather than patched locally.
+   */
+  updateCashMove: (
+    transactionId: number,
+    input: ManualTransactionEditInput,
+  ) => Promise<void>;
+  /** Removes a manual cash in / cash out and re-reads everything. */
+  deleteCashMove: (transactionId: number) => Promise<void>;
   /** Empties the cache, e.g. on sign-out. */
   reset: () => void;
 }
@@ -195,6 +211,46 @@ export const useCashDrawerStore = create<CashDrawerStore>()((set, get) => ({
       await get().load();
     } catch (error) {
       set({ error: messageOfApiError(error, "Could not record the movement.") });
+      throw error;
+    } finally {
+      set({ isPending: false });
+    }
+  },
+
+  async updateCashMove(transactionId, input) {
+    const register = get().register;
+    if (register === null) {
+      throw new Error("No cash register is currently open.");
+    }
+    if (get().isPending) {
+      throw new Error("A drawer action is already in progress.");
+    }
+    set({ isPending: true, error: null });
+    try {
+      await updateManualTransaction(register.id, transactionId, input);
+      await get().load();
+    } catch (error) {
+      set({ error: messageOfApiError(error, "Could not update the movement.") });
+      throw error;
+    } finally {
+      set({ isPending: false });
+    }
+  },
+
+  async deleteCashMove(transactionId) {
+    const register = get().register;
+    if (register === null) {
+      throw new Error("No cash register is currently open.");
+    }
+    if (get().isPending) {
+      throw new Error("A drawer action is already in progress.");
+    }
+    set({ isPending: true, error: null });
+    try {
+      await deleteManualTransaction(register.id, transactionId);
+      await get().load();
+    } catch (error) {
+      set({ error: messageOfApiError(error, "Could not delete the movement.") });
       throw error;
     } finally {
       set({ isPending: false });

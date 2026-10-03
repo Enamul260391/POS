@@ -21,6 +21,9 @@ final class CashRegisterService
     public const ALREADY_OPEN_MESSAGE = 'A cash register is already open for this user.';
     public const ALREADY_CLOSED_MESSAGE = 'Cash register is already closed.';
 
+    /** Refusal used when a write targets a row the API did not write by hand. */
+    public const NOT_MANUAL_MESSAGE = 'Only manual cash in and cash out transactions can be changed.';
+
     public function open(int $businessId, int $userId, array $data): CashRegister
     {
         return DB::transaction(function () use ($businessId, $userId, $data): CashRegister {
@@ -110,6 +113,73 @@ final class CashRegisterService
                 'note' => $data['note'] ?? null,
                 'created_by' => $userId,
             ]);
+        });
+    }
+
+    /**
+     * Amend a manual cash in / cash out.
+     *
+     * Only the three columns the manual create ever writes are accepted, and the
+     * row must still be a manual one: {@see assertManualTransaction()} refuses
+     * anything the sales, expense or payment flow posted, so holding
+     * `cash_registers.transactions.update` is not on its own enough to rewrite
+     * a cash sale.
+     *
+     * No balance is written here. `present()` / `balance()` re-derive
+     * `current_balance`, the inflow/outflow totals and the closing expectation
+     * from the ledger on every read, so an amended amount or direction is
+     * reflected the next time the drawer is fetched — there is no cached figure
+     * to keep in step and therefore no second calculation to get wrong.
+     */
+    public function updateManual(
+        int $businessId,
+        int $userId,
+        int $registerId,
+        int $transactionId,
+        array $data,
+    ): CashRegisterTransaction {
+        return DB::transaction(function () use ($businessId, $userId, $registerId, $transactionId, $data): CashRegisterTransaction {
+            $this->assertOpenAndOwned($businessId, $userId, $registerId);
+            $transaction = $this->assertManualTransaction($businessId, $registerId, $transactionId);
+
+            if (array_key_exists('amount', $data)) {
+                $transaction->amount = Money::format($data['amount']);
+            }
+            if (array_key_exists('type', $data)) {
+                $transaction->type = $data['type'];
+            }
+            if (array_key_exists('note', $data)) {
+                $transaction->note = $data['note'];
+            }
+
+            $transaction->save();
+
+            return $transaction;
+        });
+    }
+
+    /**
+     * Remove a manual cash in / cash out.
+     *
+     * The same eligibility rule as {@see updateManual()}, for the same reason:
+     * a sale or expense movement is the cash-drawer projection of another
+     * document, and removing it here would leave that document paid while the
+     * drawer pretends it never happened. `assertManualTransaction()` therefore
+     * raises the ordinary business-rule refusal for those rows, whatever the
+     * caller holds.
+     *
+     * Deleting the row is the whole operation. The balance follows from the
+     * ledger aggregate, exactly as it does for a create.
+     */
+    public function deleteManual(
+        int $businessId,
+        int $userId,
+        int $registerId,
+        int $transactionId,
+    ): void {
+        DB::transaction(function () use ($businessId, $userId, $registerId, $transactionId): void {
+            $this->assertOpenAndOwned($businessId, $userId, $registerId);
+            $this->assertManualTransaction($businessId, $registerId, $transactionId)->delete();
         });
     }
 
@@ -238,6 +308,61 @@ final class CashRegisterService
         ]);
 
         return $register;
+    }
+
+    /**
+     * Resolve one transaction of a register, refusing anything not written by hand.
+     *
+     * Three things are established here, and they are the whole of the manual
+     * rule:
+     *
+     *  1. **Tenancy.** The row is loaded through `forBusiness()` *and* through
+     *     the `cash_register_id` the caller named, so a transaction of another
+     *     business — or one guessed from a different drawer — is a plain 404.
+     *     The pair cannot be separated: a real id only resolves under the one
+     *     register it belongs to.
+     *  2. **Locking.** `lockForUpdate()` inside the caller's transaction, so a
+     *     concurrent amendment cannot interleave with this read-modify-write.
+     *  3. **Eligibility.** The row must be a manual `cash_in` / `cash_out`
+     *     *and* carry no reference. The type test alone would be enough for the
+     *     rows this API writes today, but the reference test is the real
+     *     guarantee: `reference_type` / `reference_id` are what mark a movement
+     *     as belonging to a sale, an expense or a payment, so a referenced row
+     *     is refused even if its type somehow said otherwise.
+     *
+     * The refusal is an ordinary {@see BusinessRuleException} carrying domain
+     * wording — the caller's permission was checked before this ran, so
+     * answering 403 here would misattribute a business rule to authorization.
+     */
+    private function assertManualTransaction(int $businessId, int $registerId, int $transactionId): CashRegisterTransaction
+    {
+        $transaction = CashRegisterTransaction::query()
+            ->forBusiness($businessId)
+            ->where('cash_register_id', $registerId)
+            ->whereKey($transactionId)
+            ->lockForUpdate()
+            ->firstOrFail();
+
+        if (! $this->isManual($transaction)) {
+            throw new BusinessRuleException(self::NOT_MANUAL_MESSAGE);
+        }
+
+        return $transaction;
+    }
+
+    /**
+     * Is this a movement a human typed into the drawer by hand?
+     *
+     * Mirrors exactly what `recordManual()` writes: one of the two manual types
+     * and no reference. The `opening` / `closing` markers are system rows, and
+     * `sale` / `expense` rows are written by their own flows, so all four are
+     * excluded.
+     */
+    private function isManual(CashRegisterTransaction $transaction): bool
+    {
+        return in_array($transaction->type, CashRegisterTransaction::MANUAL_TYPES, true)
+            && $transaction->reference_type === null
+            && $transaction->reference_id === null;
     }
 
     private function assertOpenAndOwned(int $businessId, int $userId, int $registerId): CashRegister

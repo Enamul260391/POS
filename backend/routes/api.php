@@ -261,6 +261,17 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         // Cash drawer. Reading the shift, opening it and closing it are three
         // separate capabilities, and a manual cash movement (cash in / cash
         // out) is a fourth — handled by `cash_registers.manage`.
+        //
+        // Correcting and removing a manual movement are two further, separate
+        // capabilities (`cash_registers.transactions.update` /
+        // `.delete`). They are *not* aliases of the create capability and not of
+        // `cash_registers.manage`: being allowed to write a movement says nothing
+        // about being allowed to rewrite or remove one already written.
+        //
+        // The permission is only half the rule. The service additionally
+        // refuses any row that is not a manual, unreferenced `cash_in` /
+        // `cash_out`, so these two routes can never reach a sale- or
+        // expense-generated movement no matter who calls them.
         Route::post('/cash-registers/open', [CashRegisterController::class, 'open'])
             ->middleware('can:cash_registers.create')
             ->name('cash-registers.open');
@@ -273,6 +284,12 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::post('/cash-registers/{cashRegister}/transactions', [CashRegisterController::class, 'storeTransaction'])
             ->middleware('can:cash_registers.manage')
             ->name('cash-registers.transactions.store');
+        Route::match(['put', 'patch'], '/cash-registers/{cashRegister}/transactions/{transaction}', [CashRegisterController::class, 'updateTransaction'])
+            ->middleware('can:cash_registers.transactions.update')
+            ->name('cash-registers.transactions.update');
+        Route::delete('/cash-registers/{cashRegister}/transactions/{transaction}', [CashRegisterController::class, 'destroyTransaction'])
+            ->middleware('can:cash_registers.transactions.delete')
+            ->name('cash-registers.transactions.destroy');
         Route::get('/cash-registers/{cashRegister}/summary', [CashRegisterController::class, 'summary'])
             ->middleware('can:cash_registers.view')
             ->name('cash-registers.summary');
