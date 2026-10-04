@@ -73,4 +73,17 @@ class Customer extends Model
     {
         return $this->hasMany(SaleReturn::class);
     }
+
+    /**
+     * Every movement recorded against this customer's account, oldest first.
+     *
+     * The current balance is the sum of these rows — `opening_balance` says
+     * where the account started and the ledger says everything since — which
+     * is why `opening_balance` is left untouched as historical data rather
+     * than being kept up to date as if it were a running total.
+     */
+    public function ledgerEntries(): HasMany
+    {
+        return $this->hasMany(CustomerLedgerEntry::class)->orderBy('id');
+    }
 }

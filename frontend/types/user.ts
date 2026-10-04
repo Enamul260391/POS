@@ -1,3 +1,5 @@
+import type { PermissionKey, PermissionPayload } from "@/types/permission";
+
 /**
  * Lifecycle state of a user account.
  * - `active`   can sign in (UI-only; there is no real authentication yet)
@@ -80,4 +82,59 @@ export interface UserRolePayload {
   id: number;
   name: string;
   slug: string;
+}
+
+/**
+ * Effect of a single user permission override (`UserPermission::EFFECTS`).
+ *
+ * The model declares exactly these two states; anything absent from the
+ * override set is "no override", which the API resolves from the user's roles.
+ */
+export type UserPermissionEffect = "allow" | "deny";
+
+/**
+ * One user-specific override, as `UserPermissionOverrideResource` returns it.
+ *
+ * The nested permission is included so a screen can label a stored override
+ * without joining against `/permissions` itself — exactly the reason the
+ * resource embeds it.
+ */
+export interface UserPermissionOverride {
+  /** Row id in `user_permissions`. */
+  id: number;
+  /** Global catalogue id — submitted back as `permission_id`. */
+  permissionId: number;
+  /** Catalogue handle, e.g. `"products.delete"`. `null` when not loaded. */
+  permissionKey: PermissionKey | null;
+  /** Human label of the permission. `null` when not loaded. */
+  permissionLabel: string | null;
+  /** Forces the permission on (`allow`) or off (`deny`) for this user. */
+  effect: UserPermissionEffect;
+}
+
+/** Raw `UserPermissionOverrideResource` payload. */
+export interface UserPermissionOverridePayload {
+  id: number;
+  permission_id: number;
+  effect: string;
+  /** Present because the endpoint eager-loads the relation. */
+  permission?: PermissionPayload | null;
+}
+
+/** Raw `data` block of the override `index` / `sync` endpoints. */
+export interface UserPermissionOverridesPayload {
+  user_id: number;
+  /**
+   * A Laravel resource collection nested in the envelope serialises under a
+   * `data` key, so both shapes are read defensively.
+   */
+  items:
+    | { data: UserPermissionOverridePayload[] }
+    | UserPermissionOverridePayload[];
+}
+
+/** One entry of the `overrides` list submitted to the sync endpoint. */
+export interface UserPermissionOverrideInput {
+  permissionId: number;
+  effect: UserPermissionEffect;
 }

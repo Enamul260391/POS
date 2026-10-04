@@ -12,6 +12,7 @@ use App\Models\Sale;
 use App\Models\User;
 use App\Services\Permission\PermissionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Tests\Feature\Concerns\InteractsWithPermissions;
 use Tests\Feature\Concerns\InteractsWithPosApi;
@@ -96,6 +97,8 @@ class OperationalPermissionTest extends TestCase
         PermissionService::CASH_REGISTERS_CREATE => ['POST', '/api/v1/cash-registers/open'],
         PermissionService::CASH_REGISTERS_UPDATE => ['POST', '/api/v1/cash-registers/{id}/close'],
         PermissionService::CASH_REGISTERS_MANAGE => ['POST', '/api/v1/cash-registers/{id}/transactions'],
+        PermissionService::CASH_REGISTERS_TRANSACTIONS_UPDATE => ['PUT', '/api/v1/cash-registers/{id}/transactions/{id}'],
+        PermissionService::CASH_REGISTERS_TRANSACTIONS_DELETE => ['DELETE', '/api/v1/cash-registers/{id}/transactions/{id}'],
 
         PermissionService::REPORTS_VIEW => ['GET', '/api/v1/reports/dashboard'],
 
@@ -113,6 +116,33 @@ class OperationalPermissionTest extends TestCase
 
         PermissionService::SETTINGS_VIEW => ['GET', '/api/v1/settings'],
         PermissionService::SETTINGS_UPDATE => ['PUT', '/api/v1/settings'],
+    ];
+
+    /**
+     * The 15 retired coarse permission slugs, plus the never-real `reports.manage`.
+     *
+     * None of them may be accepted by any capability, seeded, or resolvable.
+     * Listed here as a fixture so the regression is stated once and enforced
+     * against every capability rather than a handful.
+     *
+     * @var array<int, string>
+     */
+    private const RETIRED_SLUGS = [
+        'products.manage',
+        'sales.manage',
+        'purchases.manage',
+        'customers.manage',
+        'suppliers.manage',
+        'expenses.manage',
+        'users.manage',
+        'roles.manage',
+        'settings.manage',
+        'inventory.manage',
+        'cash_registers.manage',
+        'categories.manage',
+        'sale_returns.manage',
+        'expense_categories.manage',
+        'reports.manage',
     ];
 
     /** Substitute `{id}` with a real in-tenant category id. */
@@ -291,12 +321,17 @@ class OperationalPermissionTest extends TestCase
         $this->postJson('/api/v1/cash-registers/open', ['opening_balance' => 100])->assertStatus(201);
         $this->getJson('/api/v1/cash-registers/current')->assertStatus(200);
 
-        // Recording a cash movement is `cash_registers.manage`, and that alone
-        // does not imply read access to the shift. The 404 below is the service
-        // reporting "this user has no open drawer" — it proves the permission
-        // gate let the request through, which is the point: a reader-only role
-        // would have been stopped with 403 before reaching the service.
-        $this->userWithPermissions([PermissionService::CASH_REGISTERS_MANAGE], $business->id);
+        // Recording a cash movement is a distinct capability from reading the
+        // shift, and neither implies the other. The 403 below is the gate: a
+        // holder of only the cash-movement permission cannot read `/current` at
+        // all, which is the sharper form of the same separation.
+        $mover = $this->userWithPermissions([PermissionService::CASH_REGISTERS_MANAGE], $business->id);
+        $this->getJson('/api/v1/cash-registers/current')->assertStatus(403);
+
+        // Given the read capability as well, the same request reaches the service
+        // and gets the domain 404 ("no register is currently open") instead —
+        // proving the earlier 403 was the permission check, not the domain.
+        $this->grantCapabilityTo($mover, PermissionService::CASH_REGISTERS_VIEW);
         $this->getJson('/api/v1/cash-registers/current')
             ->assertStatus(404)
             ->assertJson(['success' => false, 'message' => 'No cash register is currently open.']);
@@ -412,21 +447,21 @@ class OperationalPermissionTest extends TestCase
     }
 
     /** @test */
-    public function the_legacy_manage_permissions_still_authorise_their_domain(): void
+    public function the_canonical_fine_grained_permissions_authorise_their_own_domain(): void
     {
         $business = Business::factory()->create();
         $product = Product::factory()->create(['business_id' => $business->id]);
 
-        // A role seeded before the fine-grained catalogue existed holds only the
-        // coarse rows. It must keep the whole domain it always had, otherwise
-        // this phase would silently lock out every existing installation.
+        // The explicit action permissions for each domain, granted the way a
+        // tenant would grant them through the roles API.
         $this->userWithPermissions([
-            'products.manage',
-            'categories.manage',
-            'inventory.manage',
-            'sales.manage',
-            'cash_registers.manage',
-            'reports.view',
+            PermissionService::PRODUCTS_VIEW,
+            PermissionService::CATEGORIES_VIEW,
+            PermissionService::INVENTORY_VIEW,
+            PermissionService::INVENTORY_MANAGE,
+            PermissionService::SALES_VIEW,
+            PermissionService::CASH_REGISTERS_VIEW,
+            PermissionService::REPORTS_VIEW,
         ], $business->id);
 
         $this->getJson('/api/v1/products')->assertStatus(200);
@@ -440,16 +475,310 @@ class OperationalPermissionTest extends TestCase
     }
 
     /** @test */
-    public function expense_categories_follow_the_expenses_manage_permission(): void
+    public function a_retired_manage_slug_no_longer_authorises_its_domain(): void
+    {
+        $business = Business::factory()->create();
+        $product = Product::factory()->create(['business_id' => $business->id]);
+
+        // A role holding only the retired coarse rows. The database cleanup
+        // migration has not run yet, so those rows can still exist here; the
+        // point is that the *runtime* no longer recognises them. Every request
+        // below must be refused, exactly as for a user with no permissions.
+        //
+        // `userWithLiteralPermissions()`, not `userWithPermissions()`: two of
+        // these slugs are also live capability names, so they have to be planted
+        // verbatim or the fixture would grant the canonical permission instead.
+        $this->userWithLiteralPermissions([
+            'products.manage',
+            'categories.manage',
+            'inventory.manage',
+            'sales.manage',
+            'cash_registers.manage',
+        ], $business->id);
+
+        $this->getJson('/api/v1/products')->assertStatus(403);
+        $this->getJson('/api/v1/categories')->assertStatus(403);
+        $this->getJson('/api/v1/stock-movements')->assertStatus(403);
+        $this->getJson('/api/v1/sales')->assertStatus(403);
+        $this->getJson('/api/v1/cash-registers/current')->assertStatus(403);
+        $this->postJson('/api/v1/products/'.$product->id.'/stock-adjustments', [
+            'type' => 'receive',
+            'quantity' => 5,
+        ])->assertStatus(403);
+    }
+
+    /** @test */
+    public function expense_categories_follow_their_own_fine_grained_permissions(): void
     {
         $business = Business::factory()->create();
 
-        // Expense categories are a sub-resource of expenses, so the coarse
-        // `expenses.manage` row has to keep working for them.
-        $this->userWithPermissions(['expenses.manage'], $business->id);
+        // `expenses.manage` used to alias every `expense_categories.*`
+        // capability. Filing an expense under a category is not the same
+        // authority as editing the category list, so the two domains are now
+        // granted separately.
+        $holder = $this->userWithLiteralPermissions(['expenses.manage'], $business->id);
+
+        $this->assertFalse($holder->fresh()->hasPermission(PermissionService::EXPENSE_CATEGORIES_VIEW));
+        $this->assertFalse($holder->fresh()->hasPermission(PermissionService::EXPENSE_CATEGORIES_CREATE));
+        $this->getJson('/api/v1/expense-categories')->assertStatus(403);
+        $this->postJson('/api/v1/expense-categories', ['name' => 'Rent'])->assertStatus(403);
+
+        // The canonical expense-category permissions do the job on their own.
+        $this->userWithPermissions([
+            PermissionService::EXPENSE_CATEGORIES_VIEW,
+            PermissionService::EXPENSE_CATEGORIES_CREATE,
+        ], $business->id);
 
         $this->getJson('/api/v1/expense-categories')->assertStatus(200);
         $this->postJson('/api/v1/expense-categories', ['name' => 'Rent'])->assertStatus(201);
+    }
+
+    /** @test */
+    public function the_expenses_domain_and_its_categories_do_not_imply_each_other(): void
+    {
+        $business = Business::factory()->create();
+
+        $expensesOnly = $this->userWithPermissions([
+            PermissionService::EXPENSES_VIEW,
+            PermissionService::EXPENSES_CREATE,
+            PermissionService::EXPENSES_UPDATE,
+            PermissionService::EXPENSES_DELETE,
+        ], $business->id);
+
+        foreach ([
+            PermissionService::EXPENSE_CATEGORIES_VIEW,
+            PermissionService::EXPENSE_CATEGORIES_CREATE,
+            PermissionService::EXPENSE_CATEGORIES_UPDATE,
+            PermissionService::EXPENSE_CATEGORIES_DELETE,
+        ] as $capability) {
+            $this->assertFalse(
+                $expensesOnly->fresh()->hasPermission($capability),
+                "The expenses domain must not imply {$capability}.",
+            );
+        }
+
+        $categoriesOnly = $this->userWithPermissions([
+            PermissionService::EXPENSE_CATEGORIES_VIEW,
+            PermissionService::EXPENSE_CATEGORIES_CREATE,
+            PermissionService::EXPENSE_CATEGORIES_UPDATE,
+            PermissionService::EXPENSE_CATEGORIES_DELETE,
+        ], $business->id);
+
+        foreach ([
+            PermissionService::EXPENSES_VIEW,
+            PermissionService::EXPENSES_CREATE,
+            PermissionService::EXPENSES_UPDATE,
+            PermissionService::EXPENSES_DELETE,
+        ] as $capability) {
+            $this->assertFalse(
+                $categoriesOnly->fresh()->hasPermission($capability),
+                "The expense-category domain must not imply {$capability}.",
+            );
+        }
+    }
+
+    /** @test */
+    public function taking_a_payment_remains_its_own_canonical_permission(): void
+    {
+        $business = Business::factory()->create();
+
+        // `sales.payments.create` survived the taxonomy change as a permission in
+        // its own right, and the retired `sales.manage` row is not an alias for
+        // it any more.
+        $this->assertSame(
+            [PermissionService::SALES_PAYMENTS_CREATE],
+            PermissionService::slugsFor(PermissionService::SALES_PAYMENTS_CREATE),
+        );
+
+        $user = $this->userWithPermissions([PermissionService::SALES_PAYMENTS_CREATE], $business->id);
+
+        $this->assertTrue($user->hasPermission(PermissionService::SALES_PAYMENTS_CREATE));
+        $this->assertFalse($user->hasPermission(PermissionService::SALES_CREATE));
+        $this->assertFalse($user->hasPermission(PermissionService::SALES_VIEW));
+
+        $coarseHolder = $this->userWithLiteralPermissions(['sales.manage'], $business->id);
+
+        $this->assertFalse(
+            $coarseHolder->fresh()->hasPermission(PermissionService::SALES_PAYMENTS_CREATE),
+            'sales.manage must not be an alias for sales.payments.create.',
+        );
+    }
+    // ------------------------------------------------------------------
+    // Capability-set regression
+    // ------------------------------------------------------------------
+
+    /**
+     * @test
+     *
+     * The 14 coarse `<resource>.manage` slugs that used to stand in for whole
+     * domains are gone from the active alias configuration. No capability may
+     * resolve through one of them any more.
+     *
+     * `inventory.manage` and `cash_registers.manage` are *not* excused by this
+     * list even though they are capability names: what matters is the *slug* a
+     * capability resolves through, and those two resolve through
+     * `inventory.adjust` and `cash_registers.transactions.create`.
+     */
+    public function no_capability_resolves_through_a_retired_manage_slug(): void
+    {
+        foreach (self::RETIRED_SLUGS as $slug) {
+            foreach (PermissionService::ALL_CAPABILITIES as $capability) {
+                $this->assertNotContains(
+                    $slug,
+                    PermissionService::slugsFor($capability),
+                    "{$capability} must not resolve through the retired slug {$slug}.",
+                );
+            }
+
+            $this->assertNotContains(
+                $slug,
+                PermissionService::catalogueSlugs(),
+                "The retired slug {$slug} must not be in the canonical catalogue.",
+            );
+        }
+    }
+
+    /** @test */
+    public function every_capability_resolves_through_exactly_one_canonical_slug(): void
+    {
+        foreach (PermissionService::ALL_CAPABILITIES as $capability) {
+            $slugs = PermissionService::slugsFor($capability);
+
+            $this->assertTrue(PermissionService::isKnown($capability), "{$capability} must be a known capability.");
+            $this->assertCount(1, $slugs, "{$capability} must resolve through exactly one slug.");
+            $this->assertSame($slugs[0], PermissionService::slugFor($capability));
+        }
+    }
+
+    /** @test */
+    public function the_two_non_identity_capabilities_resolve_to_their_action_permissions(): void
+    {
+        // Only these two have a name that differs from their slug, and the
+        // difference is deliberate: the names are API surface (routes, `can:`
+        // middleware, the `capabilities` list) and cannot be renamed, while the
+        // slugs are free to describe the action the write actually performs.
+        $expected = [
+            PermissionService::INVENTORY_MANAGE => PermissionService::INVENTORY_ADJUST,
+            PermissionService::CASH_REGISTERS_MANAGE => PermissionService::CASH_REGISTERS_TRANSACTIONS_CREATE,
+        ];
+
+        foreach ($expected as $capability => $slug) {
+            $this->assertSame([$slug], PermissionService::slugsFor($capability));
+            $this->assertContains($slug, PermissionService::catalogueSlugs());
+        }
+
+        // Every other capability is its own permission.
+        foreach (PermissionService::ALL_CAPABILITIES as $capability) {
+            if (array_key_exists($capability, $expected)) {
+                continue;
+            }
+
+            $this->assertSame(
+                [$capability],
+                PermissionService::slugsFor($capability),
+                "{$capability} should be its own permission.",
+            );
+        }
+    }
+
+    /** @test */
+    public function the_catalogue_contains_exactly_the_capability_slugs_and_no_orphans(): void
+    {
+        $catalogue = PermissionService::catalogueSlugs();
+
+        $this->assertSame(
+            array_values(array_unique($catalogue)),
+            $catalogue,
+            'catalogueSlugs() must be de-duplicated.',
+        );
+
+        $expected = array_map(
+            static fn (string $capability): string => PermissionService::slugFor($capability),
+            PermissionService::ALL_CAPABILITIES,
+        );
+
+        sort($expected);
+        $sorted = $catalogue;
+        sort($sorted);
+
+        $this->assertSame(
+            $expected,
+            $sorted,
+            'The catalogue must be exactly the canonical slug of every capability — no orphans, none missing.',
+        );
+    }
+
+    /** @test */
+    public function resolved_capabilities_agree_with_actual_gate_authorization(): void
+    {
+        $business = Business::factory()->create();
+        $service = app(PermissionService::class);
+
+        foreach ([
+            PermissionService::PRODUCTS_VIEW,
+            PermissionService::INVENTORY_MANAGE,
+            PermissionService::CASH_REGISTERS_MANAGE,
+            PermissionService::SALES_PAYMENTS_CREATE,
+            PermissionService::EXPENSE_CATEGORIES_VIEW,
+        ] as $capability) {
+            // Holding exactly the canonical permission behind this capability.
+            $user = $this->userWithPermissions([$capability], $business->id)->fresh();
+
+            $this->assertContains(
+                $capability,
+                $service->resolvedCapabilities($user),
+                "{$capability} must be published once its permission is held.",
+            );
+
+            $this->assertTrue(
+                Gate::forUser($user)->allows($capability),
+                "The Gate must agree that {$capability} is granted.",
+            );
+
+            // And the published list is never wider than the Gate actually allows.
+            foreach ($service->resolvedCapabilities($user) as $published) {
+                $this->assertTrue(
+                    Gate::forUser($user)->allows($published),
+                    "resolvedCapabilities() published {$published}, which the Gate refuses.",
+                );
+            }
+        }
+    }
+
+    /** @test */
+    public function user_override_precedence_survives_the_permission_taxonomy_change(): void
+    {
+        $business = Business::factory()->create();
+        $service = app(PermissionService::class);
+        $user = $this->userWithPermissions([PermissionService::SALES_VIEW], $business->id);
+
+        $this->assertTrue($user->hasPermission(PermissionService::SALES_VIEW));
+
+        $this->seedOverride($user, PermissionService::SALES_VIEW, 'deny');
+
+        $this->assertFalse($user->fresh()->hasPermission(PermissionService::SALES_VIEW));
+        $this->assertNotContains(
+            PermissionService::SALES_VIEW,
+            $service->resolvedCapabilities($user->fresh()),
+        );
+        $this->assertFalse(Gate::forUser($user->fresh())->allows(PermissionService::SALES_VIEW));
+    }
+
+    /**
+     * Write a per-user override directly, the way the management API would.
+     */
+    private function seedOverride(User $user, string $slug, string $effect): void
+    {
+        $permission = $this->literalPermission($slug);
+
+        DB::table('user_permissions')->insert([
+            'business_id' => $user->business_id,
+            'user_id' => $user->getKey(),
+            'permission_id' => $permission->getKey(),
+            'effect' => $effect,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     /** @test */

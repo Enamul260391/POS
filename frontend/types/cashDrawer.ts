@@ -21,6 +21,8 @@ export type CashTransactionType =
   | "opening"
   | "sale"
   | "expense"
+  /** Cash handed back on a sale return. Automatic; never editable by hand. */
+  | "refund"
   | "cash_in"
   | "cash_out"
   | "closing";
@@ -29,7 +31,7 @@ export type CashTransactionType =
  * Which way a transaction moves the drawer, derived from its type because
  * `amount` is always stored positive:
  * - `in`       `sale`, `cash_in`
- * - `out`      `expense`, `cash_out`
+ * - `out`      `expense`, `refund`, `cash_out`
  * - `neutral`  the `opening` / `closing` markers, which are excluded from the
  *              flow sums by the backend
  */

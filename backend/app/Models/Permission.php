@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * A system-defined, business-agnostic capability such as `roles.update`.
@@ -50,5 +51,20 @@ class Permission extends Model
     {
         return $this->belongsToMany(Role::class, 'permission_role')
             ->withTimestamps();
+    }
+
+    /**
+     * Per-user overrides recorded against this permission.
+     *
+     * The authorization resolver reads these rows (tenant-scoped) through
+     * `User::effectivePermissionSlugs()` / `User::deniedPermissionSlugs()`, so
+     * an override here can grant or revoke the permission for the user it
+     * belongs to.
+     *
+     * @return HasMany<UserPermission>
+     */
+    public function userOverrides(): HasMany
+    {
+        return $this->hasMany(UserPermission::class);
     }
 }

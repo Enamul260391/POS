@@ -9,6 +9,7 @@ use App\Models\Customer;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Business logic for the customer directory.
@@ -38,6 +39,10 @@ final class CustomerService
 
     /** Master-data columns a client may change. `id`/`business_id` are never among them. */
     private const EDITABLE_COLUMNS = ['name', 'phone', 'email', 'address', 'opening_balance', 'status'];
+
+    public function __construct(
+        private readonly CustomerLedgerService $ledger,
+    ) {}
 
     /**
      * Paginated, tenant-scoped customer list.
@@ -99,6 +104,18 @@ final class CustomerService
             'opening_balance' => $data['opening_balance'] ?? 0,
             'status' => $data['status'] ?? Customer::STATUS_ACTIVE,
         ]);
+
+        // The opening balance is written to the ledger once, so the account
+        // starts from a real movement rather than from a column someone has to
+        // know to read. The column itself is left as entered — it records how the
+        // account was opened and is never rewritten to track the balance.
+        //
+        // Inside a transaction so the customer and the opening entry commit
+        // together: a customer whose opening balance was never recorded would
+        // report a balance short by exactly that amount.
+        DB::transaction(function () use ($customer): void {
+            $this->ledger->recordOpeningBalance($customer, null);
+        });
 
         return $this->find($businessId, $customer->getKey());
     }

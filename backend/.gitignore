@@ -21,6 +21,14 @@
 /public/storage
 /storage/*.key
 /storage/pail
+
+# Throwaway SQLite databases created by one-off STEP 2 / STEP 5 permission
+# audits. The application targets MySQL in every environment and PHPUnit uses
+# an in-memory SQLite database (`:memory:`), so no legitimate runtime artefact
+# ever lands here. Scoped to `/storage/` so a real SQLite file kept anywhere
+# else in the project stays visible to git.
+/storage/*.sqlite
+/storage/*.sqlite3
 /vendor
 Homestead.json
 Homestead.yaml

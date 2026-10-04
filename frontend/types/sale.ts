@@ -20,9 +20,9 @@ import type { ProductUnit } from "@/types/product";
  *   server value falls back to `completed`.
  * - `paymentStatus` mirrors `Sale::PAYMENT_STATUSES`, where the API's
  *   `pending` is the UI's `unpaid`.
- * - `unitCost` was removed: `sale_items` has no cost column, so a historical
- *   cost can never be produced without inventing one (`/reports/profit-loss`
- *   reports the same limitation).
+ * - `unitCost` is still not mapped here: `sale_items` now snapshots the unit
+ *   cost, but `SaleItemResource` does not expose it, and cost figures stay in
+ *   the domain of `GET /reports/profit-loss`.
  * - `cashierName` is filled from the `cashier` relation when the API embeds
  *   it, so a sale never shows a bare id.
  */

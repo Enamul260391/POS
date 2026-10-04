@@ -55,6 +55,18 @@ class Business extends Model
         return $this->hasMany(Role::class);
     }
 
+    /**
+     * Per-user permission overrides owned by this business.
+     *
+     * Added because every tenant-owned child table already exposes a matching
+     * `hasMany` here (users, roles, products, ...); this keeps that convention
+     * consistent. It carries no authorization logic.
+     */
+    public function userPermissionOverrides(): HasMany
+    {
+        return $this->hasMany(UserPermission::class);
+    }
+
     public function categories(): HasMany
     {
         return $this->hasMany(Category::class);

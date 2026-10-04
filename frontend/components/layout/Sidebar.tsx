@@ -138,7 +138,7 @@ export function Sidebar({ open, onOpenChange }: SidebarProps) {
     <>
       <aside
         className={cn(
-          "hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:flex lg:w-64 lg:flex-col",
+          "hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:flex lg:w-55 lg:flex-col",
           "border-r border-sidebar-border bg-sidebar text-sidebar-foreground",
         )}
       >

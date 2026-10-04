@@ -39,7 +39,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       <div className="flex min-w-0 flex-1 flex-col">
         <Sidebar open={isSidebarOpen} onOpenChange={setIsSidebarOpen} />
 
-        <div className="flex min-w-0 flex-1 flex-col lg:pl-64">
+        <div className="flex min-w-0 flex-1 flex-col lg:pl-55">
           <Topbar isSidebarOpen={isSidebarOpen} onOpenSidebar={() => setIsSidebarOpen(true)} />
 
           <main className="flex min-w-0 flex-1 flex-col px-3 py-4 sm:px-4 lg:px-6">

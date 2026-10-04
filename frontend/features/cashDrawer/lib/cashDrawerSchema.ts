@@ -43,6 +43,26 @@ export const cashMoveSchema = z.object({
 
 export type CashMoveFormValues = z.infer<typeof cashMoveSchema>;
 
+/**
+ * The manual cash-movement amendment form.
+ *
+ * The same three fields `cashMoveSchema` accepts, with the same bounds, because
+ * they are the only ones the API will amend (`UpdateCashRegisterTransactionRequest`).
+ * The note is the only field allowed to be empty, and the type is constrained to
+ * the two manual kinds so the form cannot express a request the API will reject
+ * — in particular it can never turn a manual movement into a sale or expense.
+ */
+export const cashMoveEditSchema = z.object({
+  type: z.enum(["cash_in", "cash_out"]),
+  amount: z
+    .number({ invalid_type_error: "Required" })
+    .positive("Must be more than 0")
+    .max(MAX_AMOUNT, "Amount is too large"),
+  note: z.string().trim().max(2000, "Note is too long"),
+});
+
+export type CashMoveEditFormValues = z.infer<typeof cashMoveEditSchema>;
+
 export const closeRegisterSchema = z.object({
   closingBalance: z
     .number({ invalid_type_error: "Required" })

@@ -5,28 +5,23 @@ import type {
   SaleReturnItemPayload,
   SaleReturnPayload,
   SaleReturnReason,
+  SaleReturnSettlement,
+  SaleReturnSettlementPayload,
 } from "@/types/saleReturn";
 
 import { toProductUnit } from "../../products/lib/productMapper";
-import { RETURN_REASON_LABELS, RETURN_REASON_OPTIONS } from "./returns";
+import { REFUND_METHOD_OPTIONS, RETURN_REASON_LABELS, RETURN_REASON_OPTIONS } from "./returns";
 
 /**
  * `SaleReturnResource` → `SaleReturn`.
  *
- * The API's return document is thinner than the UI's: there is one free-text
- * `reason` for the whole return (no per-line reason, no restock flag and no
- * refund method). The mapper therefore:
+ * The settlement is read from the API rather than inferred: `refundMethod` was
+ * previously hard-coded to `null` because nothing recorded one, and the return
+ * history rendered "—" for every return. Now that a refund writes a payment per
+ * method, the history can show what actually happened.
  *
- *   - resolves `invoiceNumber` from the embedded sale,
- *   - stores the free-text reason in `note`,
- *   - attributes the reason to each line when the text starts with a known
- *     label, otherwise falls back to `other`,
- *   - marks every line `restocked`, which is what `SaleReturnService` does
- *     (it writes a stock-in movement per returned line that tracks stock),
- *   - leaves `refundMethod` `null`, because nothing was recorded.
- *
- * Nothing is invented: every value either comes from the response or documents
- * a behaviour the backend performs unconditionally.
+ * Nothing else is invented: every value either comes from the response or
+ * documents a behaviour the backend performs unconditionally.
  */
 
 /** Reverse lookup: composer label → reason enum. */
@@ -77,6 +72,32 @@ export function toSaleReturnItem(
   };
 }
 
+/** `SaleReturnResource.settlement` → `SaleReturnSettlement`. */
+export function toSaleReturnSettlement(
+  payload: SaleReturnSettlementPayload | undefined,
+): SaleReturnSettlement | null {
+  if (payload === undefined) {
+    return null;
+  }
+
+  // The API keys by the canonical method name; only the four methods a refund
+  // can be paid through are kept, so a UI-only alias such as `mobile_banking`
+  // can never appear in a settlement the backend did not write.
+  const byMethod: SaleReturnSettlement["byMethod"] = {};
+  for (const method of REFUND_METHOD_OPTIONS) {
+    const amount = toMoney(payload.by_method?.[method.value] ?? 0);
+    if (amount > 0) {
+      byMethod[method.value] = amount;
+    }
+  }
+
+  return {
+    refunded: toMoney(payload.refunded),
+    credited: toMoney(payload.credited),
+    byMethod,
+  };
+}
+
 /** `SaleReturnResource` → `SaleReturn`. */
 export function toSaleReturn(payload: SaleReturnPayload): SaleReturn {
   const note = toText(payload.reason);
@@ -95,8 +116,11 @@ export function toSaleReturn(payload: SaleReturnPayload): SaleReturn {
     customerName: toText(payload.sale?.customer?.name),
     items: (payload.items ?? []).map((item) => toSaleReturnItem(item, payload.id, reason)),
     refundTotal: toMoney(payload.refund_amount),
-    // Not recorded by the API — see the type's own documentation.
-    refundMethod: null,
+    // Recorded by the API. `null` only when the endpoint did not load the
+    // refunds, which is the list view — a missing settlement there means "not
+    // reported", not "nothing was refunded".
+    settlement: toSaleReturnSettlement(payload.settlement),
+    // The API records the method, not a provider name.
     refundProvider: null,
     note,
     processedBy: null,

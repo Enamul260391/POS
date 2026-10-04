@@ -8,6 +8,7 @@ use App\Models\Business;
 use App\Models\CashRegisterTransaction;
 use App\Models\Expense;
 use App\Models\ExpenseCategory;
+use App\Models\Payment;
 use App\Models\Product;
 use App\Models\Purchase;
 use App\Models\PurchaseItem;
@@ -57,6 +58,100 @@ class ReportTest extends TestCase
         Sale::factory()->create(['business_id' => $this->otherBusiness->id, 'grand_total' => 999]);
         $response = $this->getJson('/api/v1/reports/sales?date_from=2026-09-01&date_to=2026-09-30');
         $response->assertStatus(200)->assertJsonPath('data.metrics.sale_count', 1)->assertJsonPath('data.metrics.total_sales', '95.00')->assertJsonPath('data.metrics.net_sales', '95.00');
+    }
+
+    /**
+     * The payment-method split is a real grouped aggregate over `payments`, not
+     * a client-side reconstruction.
+     *
+     * Three invoices of this tenant inside the window pay in three different
+     * methods (with cash split across two payments, so `payment_count` proves
+     * the grouping counts rows), and four decoys prove every scope dimension:
+     * another tenant's invoice, an invoice outside the window, a purchase
+     * payment of this tenant, and a payment on a fourth in-window invoice that
+     * the test never reads back — so a breakdown that leaked an extra row would
+     * fail the row count rather than pass unnoticed.
+     *
+     * @test
+     */
+    public function sales_report_groups_payments_by_method_within_the_tenant_and_window(): void
+    {
+        $cashSale = Sale::factory()->create(['business_id' => $this->business->id, 'sale_date' => '2026-09-10', 'grand_total' => 100, 'paid_amount' => 60]);
+        $cardSale = Sale::factory()->create(['business_id' => $this->business->id, 'sale_date' => '2026-09-11', 'grand_total' => 50, 'paid_amount' => 50]);
+        $bankSale = Sale::factory()->create(['business_id' => $this->business->id, 'sale_date' => '2026-09-12', 'grand_total' => 30, 'paid_amount' => 30]);
+
+        Payment::create(['business_id' => $this->business->id, 'sale_id' => $cashSale->id, 'payment_method' => 'cash', 'amount' => 40]);
+        Payment::create(['business_id' => $this->business->id, 'sale_id' => $cashSale->id, 'payment_method' => 'cash', 'amount' => 20]);
+        Payment::create(['business_id' => $this->business->id, 'sale_id' => $cardSale->id, 'payment_method' => 'card', 'amount' => 50]);
+        Payment::create(['business_id' => $this->business->id, 'sale_id' => $bankSale->id, 'payment_method' => 'bank', 'amount' => 30]);
+
+        // Another tenant, inside the window: must not appear at all.
+        $foreignSale = Sale::factory()->create(['business_id' => $this->otherBusiness->id, 'sale_date' => '2026-09-10']);
+        Payment::create(['business_id' => $this->otherBusiness->id, 'sale_id' => $foreignSale->id, 'payment_method' => 'cash', 'amount' => 900]);
+
+        // Outside the window: must not appear at all.
+        $oldSale = Sale::factory()->create(['business_id' => $this->business->id, 'sale_date' => '2026-08-01']);
+        Payment::create(['business_id' => $this->business->id, 'sale_id' => $oldSale->id, 'payment_method' => 'cash', 'amount' => 700]);
+
+        // A purchase payment of this tenant, in the window: `payments` is shared
+        // with purchases, so it must not be swept into the sales breakdown.
+        $purchase = Purchase::factory()->create(['business_id' => $this->business->id, 'purchase_date' => '2026-09-10']);
+        Payment::create(['business_id' => $this->business->id, 'purchase_id' => $purchase->id, 'payment_method' => 'cash', 'amount' => 500]);
+
+        $response = $this->getJson('/api/v1/reports/sales?date_from=2026-09-01&date_to=2026-09-30')
+            ->assertStatus(200)
+            ->assertJsonCount(3, 'data.metrics.payment_breakdown')
+            // Largest first, as the API orders it.
+            ->assertJsonPath('data.metrics.payment_breakdown.0.payment_method', 'cash')
+            ->assertJsonPath('data.metrics.payment_breakdown.0.total_amount', '60.00')
+            // Two cash payments of 40 + 20, so the count proves rows are grouped
+            // rather than one row per invoice.
+            ->assertJsonPath('data.metrics.payment_breakdown.0.payment_count', 2)
+            ->assertJsonPath('data.metrics.payment_breakdown.1.payment_method', 'card')
+            ->assertJsonPath('data.metrics.payment_breakdown.1.total_amount', '50.00')
+            ->assertJsonPath('data.metrics.payment_breakdown.2.payment_method', 'bank')
+            ->assertJsonPath('data.metrics.payment_breakdown.2.total_amount', '30.00');
+
+        // The header totals are untouched by the extra grouped query: the three
+        // invoices' own paid_amounts (60 + 50 + 30), which is a different sum
+        // from the breakdown's (also 140, but reached through the payments).
+        $this->assertSame('140.00', $response->json('data.metrics.paid_amount'));
+    }
+
+    /**
+     * The `payment_method` filter narrows the breakdown as well as the header,
+     * so the split can never contradict the totals printed above it.
+     *
+     * @test
+     */
+    public function sales_report_payment_method_filter_narrows_the_breakdown(): void
+    {
+        $mixed = Sale::factory()->create(['business_id' => $this->business->id, 'sale_date' => '2026-09-10', 'grand_total' => 100, 'paid_amount' => 100]);
+        Payment::create(['business_id' => $this->business->id, 'sale_id' => $mixed->id, 'payment_method' => 'cash', 'amount' => 70]);
+        Payment::create(['business_id' => $this->business->id, 'sale_id' => $mixed->id, 'payment_method' => 'card', 'amount' => 30]);
+
+        $this->getJson('/api/v1/reports/sales?payment_method=cash')
+            ->assertStatus(200)
+            // The invoice is matched because it *has* a cash payment …
+            ->assertJsonPath('data.metrics.sale_count', 1)
+            // … but only the cash row is reported, at its own amount.
+            ->assertJsonCount(1, 'data.metrics.payment_breakdown')
+            ->assertJsonPath('data.metrics.payment_breakdown.0.payment_method', 'cash')
+            ->assertJsonPath('data.metrics.payment_breakdown.0.total_amount', '70.00');
+    }
+
+    /**
+     * A window with no payments answers with an empty list, not a fabricated
+     * 100% bucket and not an error.
+     *
+     * @test
+     */
+    public function sales_report_answers_with_an_empty_payment_breakdown_for_an_empty_period(): void
+    {
+        $this->getJson('/api/v1/reports/sales?date_from=2030-01-01&date_to=2030-12-31')
+            ->assertStatus(200)
+            ->assertJsonPath('data.metrics.sale_count', 0)
+            ->assertJsonPath('data.metrics.payment_breakdown', []);
     }
 
     /** @test */
@@ -294,6 +389,113 @@ class ReportTest extends TestCase
         $this->postJson('/api/v1/cash-registers/open', ['opening_balance' => 25]);
         $this->assertDatabaseHas('cash_register_transactions', ['type' => CashRegisterTransaction::TYPE_OPENING]);
         $this->getJson('/api/v1/reports/dashboard')->assertStatus(200)->assertJsonPath('data.current_cash_balance', '25.00')->assertJsonPath('data.today_sale_count', 0);
-        $this->getJson('/api/v1/reports/profit-loss')->assertStatus(200)->assertJsonPath('data.metrics.available', false)->assertJsonPath('data.metrics.limitation', 'Historical cost of goods sold is unavailable because sale_items does not preserve unit cost.');
+    }
+
+    /**
+     * Profit is now computable: `sale_items.unit_cost` snapshots the cost of the
+     * units at the moment of sale, so the report can subtract real COGS from
+     * revenue instead of refusing to answer.
+     *
+     * @test
+     */
+    public function profit_loss_report_subtracts_the_snapshotted_cost_of_goods(): void
+    {
+        $product = Product::factory()->create(['business_id' => $this->business->id, 'cost_price' => 30, 'selling_price' => 50]);
+        $sale = Sale::factory()->create(['business_id' => $this->business->id, 'sale_date' => '2026-09-10', 'subtotal' => 200, 'discount' => 0, 'tax' => 0, 'grand_total' => 200, 'paid_amount' => 200, 'due_amount' => 0]);
+        // 4 units at a cost of 30 = 120 of COGS against 200 of revenue.
+        SaleItem::create(['sale_id' => $sale->id, 'product_id' => $product->id, 'quantity' => 4, 'unit_price' => 50, 'unit_cost' => 30, 'discount' => 0, 'tax' => 0, 'total' => 200]);
+        Expense::factory()->create(['business_id' => $this->business->id, 'expense_date' => '2026-09-10', 'amount' => 30]);
+
+        $this->getJson('/api/v1/reports/profit-loss?date_from=2026-09-01&date_to=2026-09-30')
+            ->assertStatus(200)
+            ->assertJsonPath('data.metrics.available', true)
+            ->assertJsonPath('data.metrics.limitation', null)
+            ->assertJsonPath('data.metrics.revenue', '200.00')
+            ->assertJsonPath('data.metrics.cost_of_goods', '120.00')
+            ->assertJsonPath('data.metrics.gross_profit', '80.00')
+            ->assertJsonPath('data.metrics.gross_margin_percent', '40.00')
+            ->assertJsonPath('data.metrics.total_expense', '30.00')
+            ->assertJsonPath('data.metrics.net_profit', '50.00')
+            ->assertJsonPath('data.metrics.unpriced_lines', 0);
+    }
+
+    /**
+     * A line with no recorded cost must NOT be treated as costing nothing.
+     *
+     * Summing a NULL cost as 0 would understate COGS and overstate profit, so
+     * the report withholds the profit figures and says how many rows are
+     * responsible — the same honest "unavailable" contract it had before, now
+     * driven by data rather than by a missing column.
+     *
+     * @test
+     */
+    public function profit_loss_report_withholds_profit_while_any_line_has_no_recorded_cost(): void
+    {
+        $product = Product::factory()->create(['business_id' => $this->business->id, 'cost_price' => 30, 'selling_price' => 50]);
+        $sale = Sale::factory()->create(['business_id' => $this->business->id, 'sale_date' => '2026-09-10', 'grand_total' => 200, 'paid_amount' => 200]);
+        SaleItem::create(['sale_id' => $sale->id, 'product_id' => $product->id, 'quantity' => 4, 'unit_price' => 50, 'unit_cost' => 30, 'discount' => 0, 'tax' => 0, 'total' => 200]);
+        // A service line: no product, so no cost was ever captured for it.
+        SaleItem::create(['sale_id' => $sale->id, 'product_id' => null, 'quantity' => 1, 'unit_price' => 50, 'unit_cost' => null, 'discount' => 0, 'tax' => 0, 'total' => 50]);
+
+        $response = $this->getJson('/api/v1/reports/profit-loss?date_from=2026-09-01&date_to=2026-09-30')
+            ->assertStatus(200)
+            ->assertJsonPath('data.metrics.available', false)
+            ->assertJsonPath('data.metrics.unpriced_lines', 1)
+            // The cost-derived figures are withheld, not zeroed.
+            ->assertJsonPath('data.metrics.cost_of_goods', null)
+            ->assertJsonPath('data.metrics.gross_profit', null)
+            ->assertJsonPath('data.metrics.gross_margin_percent', null)
+            ->assertJsonPath('data.metrics.net_profit', null);
+
+        $this->assertStringContainsString(
+            '1 sale line(s)',
+            (string) $response->json('data.metrics.limitation')
+        );
+    }
+
+    /**
+     * The profit population must be the invoices the report actually covers —
+     * this tenant, this window — and another tenant's costs must never leak in.
+     *
+     * @test
+     */
+    public function profit_loss_report_is_tenant_and_window_scoped(): void
+    {
+        $product = Product::factory()->create(['business_id' => $this->business->id, 'cost_price' => 10, 'selling_price' => 20]);
+        $mine = Sale::factory()->create(['business_id' => $this->business->id, 'sale_date' => '2026-09-10', 'grand_total' => 100, 'paid_amount' => 100]);
+        SaleItem::create(['sale_id' => $mine->id, 'product_id' => $product->id, 'quantity' => 5, 'unit_price' => 20, 'unit_cost' => 10, 'discount' => 0, 'tax' => 0, 'total' => 100]);
+
+        // Another tenant, inside the window.
+        $foreign = Sale::factory()->create(['business_id' => $this->otherBusiness->id, 'sale_date' => '2026-09-10', 'grand_total' => 900, 'paid_amount' => 900]);
+        SaleItem::create(['sale_id' => $foreign->id, 'product_id' => $product->id, 'quantity' => 9, 'unit_price' => 100, 'unit_cost' => 90, 'discount' => 0, 'tax' => 0, 'total' => 900]);
+
+        // This tenant, outside the window.
+        $old = Sale::factory()->create(['business_id' => $this->business->id, 'sale_date' => '2026-08-01', 'grand_total' => 700, 'paid_amount' => 700]);
+        SaleItem::create(['sale_id' => $old->id, 'product_id' => $product->id, 'quantity' => 7, 'unit_price' => 100, 'unit_cost' => 70, 'discount' => 0, 'tax' => 0, 'total' => 700]);
+
+        $this->getJson('/api/v1/reports/profit-loss?date_from=2026-09-01&date_to=2026-09-30')
+            ->assertStatus(200)
+            ->assertJsonPath('data.metrics.revenue', '100.00')
+            ->assertJsonPath('data.metrics.cost_of_goods', '50.00')
+            ->assertJsonPath('data.metrics.gross_profit', '50.00');
+    }
+
+    /**
+     * An empty window must answer with zeroes, not nulls and not an error.
+     *
+     * @test
+     */
+    public function profit_loss_report_answers_with_zeroes_for_an_empty_period(): void
+    {
+        $this->getJson('/api/v1/reports/profit-loss?date_from=2030-01-01&date_to=2030-12-31')
+            ->assertStatus(200)
+            ->assertJsonPath('data.metrics.available', true)
+            ->assertJsonPath('data.metrics.revenue', '0.00')
+            ->assertJsonPath('data.metrics.cost_of_goods', '0.00')
+            ->assertJsonPath('data.metrics.gross_profit', '0.00')
+            // No revenue means no meaningful margin, so it is withheld rather
+            // than divided by zero.
+            ->assertJsonPath('data.metrics.gross_margin_percent', null)
+            ->assertJsonPath('data.metrics.net_profit', '0.00');
     }
 }

@@ -2,6 +2,10 @@ import { toText } from "@/lib/api/values";
 import type {
   User,
   UserPayload,
+  UserPermissionEffect,
+  UserPermissionOverride,
+  UserPermissionOverridePayload,
+  UserPermissionOverridesPayload,
   UserRoleOption,
   UserRolePayload,
   UserStatus,
@@ -48,4 +52,58 @@ export function toUserStatus(value: string): UserStatus {
 /** `RoleResource` → the role shape the picker and filter render. */
 export function toUserRole(payload: UserRolePayload): UserRoleOption {
   return { id: payload.id, name: payload.name, slug: payload.slug };
+}
+
+/**
+ * Narrows the API's `effect` string to the two states the model declares.
+ *
+ * The value arrives as a plain `string`, so it is narrowed rather than trusted:
+ * anything that is neither `allow` nor `deny` is dropped by the caller, because
+ * an unknown effect must never be submitted back as an override.
+ */
+export function toUserPermissionEffect(value: string): UserPermissionEffect | null {
+  return value === "allow" || value === "deny" ? value : null;
+}
+
+/**
+ * `UserPermissionOverrideResource` → `UserPermissionOverride`.
+ *
+ * A row whose effect the model does not declare maps to `null`, so a screen can
+ * filter it out instead of rendering (and later resubmitting) a state the API
+ * would reject.
+ */
+export function toUserPermissionOverride(
+  payload: UserPermissionOverridePayload,
+): UserPermissionOverride | null {
+  const effect = toUserPermissionEffect(payload.effect);
+  if (effect === null) {
+    return null;
+  }
+
+  return {
+    id: payload.id,
+    permissionId: payload.permission_id,
+    permissionKey: payload.permission?.slug ?? null,
+    permissionLabel: toText(payload.permission?.name),
+    effect,
+  };
+}
+
+/**
+ * Unwraps the `items` block of the override endpoints.
+ *
+ * The controller nests a resource collection in the response envelope, which
+ * Laravel serialises as `{ data: [...] }`, while the mapper is easier to reason
+ * about with a plain array — so both are accepted here.
+ */
+export function toUserPermissionOverrides(
+  payload: UserPermissionOverridesPayload,
+): UserPermissionOverride[] {
+  const items = Array.isArray(payload.items)
+    ? payload.items
+    : (payload.items?.data ?? []);
+
+  return items
+    .map(toUserPermissionOverride)
+    .filter((override): override is UserPermissionOverride => override !== null);
 }

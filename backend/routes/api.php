@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\V1\SettingsController;
 use App\Http\Controllers\Api\V1\StockMovementController;
 use App\Http\Controllers\Api\V1\SupplierController;
 use App\Http\Controllers\Api\V1\UserController;
+use App\Http\Controllers\Api\V1\UserPermissionController;
 use App\Http\Controllers\Api\V1\UserRoleController;
 use Illuminate\Support\Facades\Route;
 
@@ -260,6 +261,17 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         // Cash drawer. Reading the shift, opening it and closing it are three
         // separate capabilities, and a manual cash movement (cash in / cash
         // out) is a fourth — handled by `cash_registers.manage`.
+        //
+        // Correcting and removing a manual movement are two further, separate
+        // capabilities (`cash_registers.transactions.update` /
+        // `.delete`). They are *not* aliases of the create capability and not of
+        // `cash_registers.manage`: being allowed to write a movement says nothing
+        // about being allowed to rewrite or remove one already written.
+        //
+        // The permission is only half the rule. The service additionally
+        // refuses any row that is not a manual, unreferenced `cash_in` /
+        // `cash_out`, so these two routes can never reach a sale- or
+        // expense-generated movement no matter who calls them.
         Route::post('/cash-registers/open', [CashRegisterController::class, 'open'])
             ->middleware('can:cash_registers.create')
             ->name('cash-registers.open');
@@ -272,6 +284,12 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::post('/cash-registers/{cashRegister}/transactions', [CashRegisterController::class, 'storeTransaction'])
             ->middleware('can:cash_registers.manage')
             ->name('cash-registers.transactions.store');
+        Route::match(['put', 'patch'], '/cash-registers/{cashRegister}/transactions/{transaction}', [CashRegisterController::class, 'updateTransaction'])
+            ->middleware('can:cash_registers.transactions.update')
+            ->name('cash-registers.transactions.update');
+        Route::delete('/cash-registers/{cashRegister}/transactions/{transaction}', [CashRegisterController::class, 'destroyTransaction'])
+            ->middleware('can:cash_registers.transactions.delete')
+            ->name('cash-registers.transactions.destroy');
         Route::get('/cash-registers/{cashRegister}/summary', [CashRegisterController::class, 'summary'])
             ->middleware('can:cash_registers.view')
             ->name('cash-registers.summary');
@@ -301,6 +319,54 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::get('/reports/dashboard', [ReportController::class, 'dashboard'])
             ->middleware('can:reports.view')
             ->name('reports.dashboard');
+
+        // Reports Stage 7 — customer outstanding / receivables. A **position**
+        // report, not a period one: `ReportService::customerOutstandingReport()`
+        // sums the whole ledger per customer and never narrows that balance by
+        // the requested dates. The window applies only to the separately named
+        // `period_movement`, so a user moving the date filter cannot make a
+        // customer's current balance appear to change. Same single capability as
+        // every other report, and no customer-management permission is required.
+        Route::get('/reports/customer-outstanding', [ReportController::class, 'customerOutstanding'])
+            ->middleware('can:reports.view')
+            ->name('reports.customer-outstanding');
+
+        // Reports Stage 8 — supplier outstanding / payables. The payables mirror of
+        // Stage 7, and a **position** report for the same reason: the balance is
+        // `suppliers.opening_balance + SUM(purchases.due_amount)` over the whole
+        // history and is never narrowed by the requested dates. The window applies
+        // only to the separately named `period_movement`, so moving the date filter
+        // cannot make a supplier's current payable appear to change. There is no
+        // supplier ledger table and none is introduced — see
+        // `ReportService::supplierOutstandingReport()` for why the purchase header
+        // columns are a complete source here. Same single capability as every other
+        // report, and no supplier-management permission is required.
+        Route::get('/reports/supplier-outstanding', [ReportController::class, 'supplierOutstanding'])
+            ->middleware('can:reports.view')
+            ->name('reports.supplier-outstanding');
+
+        // Reports Stage 9 — cash register movement. A **period activity**
+        // report, not a position one: the window genuinely restricts which
+        // movements are counted, because a drawer movement is a dated event
+        // rather than a standing balance.
+        //
+        // The source of truth is `cash_register_transactions` alone — the sale,
+        // expense and return modules are read only to understand what a
+        // movement *references*, never to re-derive one. A card or bank sale
+        // posts no drawer row at all, so it cannot appear here, and the
+        // opening / closing rows are markers excluded from the cash in / out
+        // totals by `CashRegisterTransaction::INFLOW_TYPES` / `OUTFLOW_TYPES`
+        // exactly as the drawer balance itself excludes them.
+        //
+        // Two conventionally-validated filters ride on the shared
+        // `ReportFilterRequest`: `cash_register_id` (same-business only, so a
+        // foreign id is a 422 on the established rule) and `transaction_type`
+        // (canonical types only, so an unknown value is refused rather than
+        // silently matching nothing). Same single capability as every other
+        // report — `reports.view` and nothing else.
+        Route::get('/reports/cash-register-movements', [ReportController::class, 'cashRegisterMovements'])
+            ->middleware('can:reports.view')
+            ->name('reports.cash-register-movements');
 
         // Inventory — movement log + manual stock adjustment. Stock is only
         // ever written through the ledger, never through a product field.
@@ -374,6 +440,29 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::match(['put', 'patch'], '/users/{user}/roles', [UserRoleController::class, 'sync'])
             ->middleware('can:users.roles.update')
             ->name('users.roles.update');
+
+        // User -> permission overrides (allow/deny). The authorisation surface
+        // for a single user, guarded by the same capability as the role
+        // assignment above: an override *is* a change to what the account may do,
+        // so both live behind `users.roles.update`, and no new permission slug is
+        // introduced.
+        //
+        // Tenancy is enforced in the service: the `{user}` is resolved inside the
+        // authenticated business (another tenant's user is a 404) and every row is
+        // written with that same `business_id`, which is taken from the token and
+        // never from the payload. A user may not manage their own overrides.
+        Route::get('/users/{user}/permission-overrides', [UserPermissionController::class, 'index'])
+            ->middleware('can:users.roles.update')
+            ->name('users.permission-overrides.index');
+        Route::post('/users/{user}/permission-overrides', [UserPermissionController::class, 'store'])
+            ->middleware('can:users.roles.update')
+            ->name('users.permission-overrides.store');
+        Route::match(['put', 'patch'], '/users/{user}/permission-overrides', [UserPermissionController::class, 'sync'])
+            ->middleware('can:users.roles.update')
+            ->name('users.permission-overrides.sync');
+        Route::delete('/users/{user}/permission-overrides/{permission}', [UserPermissionController::class, 'destroy'])
+            ->middleware('can:users.roles.update')
+            ->name('users.permission-overrides.destroy');
 
         // Business settings — always the caller's own business; there is no
         // {business} segment to tamper with.

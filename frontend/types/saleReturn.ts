@@ -61,6 +61,26 @@ export interface SaleReturnItem {
   restocked: boolean;
 }
 
+/**
+ * How one return was settled, as the API recorded it.
+ *
+ * `refunded` and `credited` always add up to the return's `refund_amount`: a
+ * return either paid money out, relieved a debt, or split between the two — it
+ * is never neither and never both. `byMethod` is the per-method split of the
+ * money that actually left the business, which is why it sums to `refunded`.
+ */
+export interface SaleReturnSettlement {
+  /** Money that left the business. */
+  refunded: number;
+  /**
+   * Money no method could pay back, relieved on the customer's account instead.
+   * Zero for a return that was settled in full by refunds.
+   */
+  credited: number;
+  /** Per-method split of `refunded`, e.g. `{ cash: 400, card: 100 }`. */
+  byMethod: Partial<Record<PaymentMethod, number>>;
+}
+
 export interface SaleReturn {
   /** Primary key. */
   id: number;
@@ -79,14 +99,21 @@ export interface SaleReturn {
   /** Total money given back to the customer. */
   refundTotal: number;
   /**
-   * How the money was returned, or `null`.
+   * How the money was actually handed back, or `null` when the API did not
+   * report a settlement (the list view, which does not load the refund rows).
    *
-   * `sale_returns` has no refund-method column, so a return that came back
-   * from the API is always `null` — the UI shows "—" instead of guessing a
-   * method the backend never recorded.
+   * Populated from the return's own `settlement`, so this is what the backend
+   * decided rather than a guess: the per-method breakdown always sums to
+   * `refunded`, and `credited` is the part no method could cover and that was
+   * relieved on the customer's account instead.
    */
-  refundMethod: PaymentMethod | null;
-  /** Provider name for non cash refunds, e.g. "bKash", else `null`. */
+  settlement: SaleReturnSettlement | null;
+  /**
+   * Free text provider name for a non-cash refund, e.g. "bKash", else `null`.
+   *
+   * The API records the method rather than a provider name, so this stays
+   * `null` for a return that came from the API.
+   */
   refundProvider: string | null;
   /** Free text reason / note recorded on the return document. */
   note: string | null;
@@ -122,6 +149,13 @@ export interface SaleReturnItemPayload {
   } | null;
 }
 
+/** Raw `settlement` block of a `SaleReturnResource`. */
+export interface SaleReturnSettlementPayload {
+  refunded: string;
+  credited: string;
+  by_method: Record<string, string>;
+}
+
 export interface SaleReturnPayload {
   id: number;
   sale_id: number;
@@ -132,6 +166,12 @@ export interface SaleReturnPayload {
   subtotal: string;
   tax: string;
   refund_amount: string;
+  /**
+   * Present only when the endpoint eager-loaded the refund payments. The list
+   * view does not, so it is absent there rather than null — which is why the
+   * UI type is `SaleReturnSettlement | null`.
+   */
+  settlement?: SaleReturnSettlementPayload;
   status: string;
   sale?: {
     id: number;

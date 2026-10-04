@@ -13,6 +13,7 @@ class SaleItem extends Model
         'product_id',
         'quantity',
         'unit_price',
+        'unit_cost',
         'discount',
         'tax',
         'total',
@@ -23,6 +24,7 @@ class SaleItem extends Model
         return [
             'quantity' => 'decimal:4',
             'unit_price' => 'decimal:2',
+            'unit_cost' => 'decimal:2',
             'discount' => 'decimal:2',
             'tax' => 'decimal:2',
             'total' => 'decimal:2',

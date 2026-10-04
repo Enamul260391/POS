@@ -78,9 +78,10 @@ class AppServiceProvider extends ServiceProvider
      * resolves through the same Gate. Nothing re-implements permission logic.
      *
      * The abilities are keyed by the capability names declared in
-     * {@see PermissionService::CAPABILITIES}, which also maps each capability
-     * onto the accepted permission slugs (the fine-grained name or the
-     * pre-existing `<resource>.manage` row). A denial surfaces as
+     * {@see PermissionService::CAPABILITIES}, each of which resolves through
+     * exactly one canonical permission slug. No capability accepts a coarse
+     * `<resource>.manage` row any more, so a stale grant of one authorises
+     * nothing. A denial surfaces as
      * `403 Forbidden` through `ApiExceptionRenderer`, while
      * `auth:sanctum` — which runs first — still produces `401` for anonymous
      * callers.

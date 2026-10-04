@@ -1,7 +1,11 @@
 import type {
+  CashRegisterTransaction,
   CashTransactionDirection,
   CashTransactionType,
 } from "@/types/cashDrawer";
+
+/** The two transaction types a person types in by hand. */
+const MANUAL_CASH_TYPES: readonly CashTransactionType[] = ["cash_in", "cash_out"];
 
 /**
  * Display-only helpers for the cash drawer screen.
@@ -20,6 +24,7 @@ export const CASH_TRANSACTION_LABELS: Readonly<
   opening: "Opening float",
   sale: "Cash sale",
   expense: "Expense",
+  refund: "Refund (sale return)",
   cash_in: "Cash in",
   cash_out: "Cash out",
   closing: "Closing count",
@@ -28,6 +33,31 @@ export const CASH_TRANSACTION_LABELS: Readonly<
 /** Display label of one transaction type. */
 export function cashTransactionLabel(type: CashTransactionType): string {
   return CASH_TRANSACTION_LABELS[type];
+}
+
+/**
+ * Is this a movement a person typed into the drawer by hand?
+ *
+ * The client-side mirror of the rule `CashRegisterService` enforces before it
+ * will update or delete a row, and it is deliberately the *same* rule rather
+ * than a type check alone: `referenceType` / `referenceId` are what mark a
+ * movement as belonging to a sale, an expense or a payment, so a row carrying
+ * one is automatic even if its type says `cash_in`.
+ *
+ * This decides whether the Edit and Delete actions are offered at all. It is
+ * **not** the security boundary — the API re-checks the same condition and
+ * refuses the row regardless of what the UI offered — but without it a cashier
+ * would see a button that is guaranteed to fail, and a reference-linked row
+ * would appear amendable when it is not.
+ */
+export function isManualCashMovement(
+  transaction: CashRegisterTransaction,
+): boolean {
+  return (
+    MANUAL_CASH_TYPES.includes(transaction.type) &&
+    transaction.referenceType === null &&
+    transaction.referenceId === null
+  );
 }
 
 /**
@@ -43,7 +73,10 @@ export function cashTransactionDirection(
   if (type === "sale" || type === "cash_in") {
     return "in";
   }
-  if (type === "expense" || type === "cash_out") {
+  // `refund` is grouped with the outflows for the same reason it is an outflow
+  // in the backend: it is cash handed back to a customer on a sale return, so it
+  // lowers the drawer exactly as an expense does.
+  if (type === "expense" || type === "refund" || type === "cash_out") {
     return "out";
   }
   return "neutral";

@@ -24,9 +24,9 @@ use Tests\TestCase;
  */
 class UserCapabilitiesTest extends TestCase
 {
-    use RefreshDatabase;
     use InteractsWithPermissions;
     use InteractsWithPosApi;
+    use RefreshDatabase;
 
     protected Business $business;
 
@@ -70,14 +70,18 @@ class UserCapabilitiesTest extends TestCase
     /** @test */
     public function me_reports_exactly_the_capabilities_the_api_enforces(): void
     {
-        $user = $this->userWithPermissions(['users.manage'], $this->business->id);
+        $user = $this->userWithPermissions([
+            PermissionService::USERS_VIEW,
+            PermissionService::USERS_CREATE,
+            PermissionService::USERS_UPDATE,
+            PermissionService::USERS_ROLES_UPDATE,
+        ], $this->business->id);
         $token = $this->tokenFor($user);
 
         $capabilities = $this->capabilitiesOf($token);
 
-        // `users.manage` is the coarse row that authorises the whole users
-        // domain, so every verb of it resolves to a granted capability and the
-        // client only ever has to test one name.
+        // Holding the four explicit `users.*` permissions authorises exactly the
+        // four user capabilities, so the client only ever tests one name.
         $this->assertContains(PermissionService::USERS_VIEW, $capabilities);
         $this->assertContains(PermissionService::USERS_CREATE, $capabilities);
         $this->assertContains(PermissionService::USERS_UPDATE, $capabilities);
@@ -95,7 +99,10 @@ class UserCapabilitiesTest extends TestCase
         // A user who may read the staff directory but not manage roles: the exact
         // combination behind the directory screen's role catalogue, and the one
         // that used to surface as a `Forbidden` banner over a working table.
-        $user = $this->userWithPermissions(['users.manage'], $this->business->id);
+        $user = $this->userWithPermissions([
+            PermissionService::USERS_VIEW,
+            PermissionService::USERS_UPDATE,
+        ], $this->business->id);
         $token = $this->tokenFor($user);
 
         $capabilities = $this->capabilitiesOf($token);
@@ -113,11 +120,14 @@ class UserCapabilitiesTest extends TestCase
     }
 
     /** @test */
-    public function capabilities_are_never_widened_by_an_unrelated_coarse_grant(): void
+    public function capabilities_are_never_widened_by_an_unrelated_domain(): void
     {
-        // Holding one resource's `*.manage` row says nothing about another, so
-        // the two must not bleed into each other.
-        $user = $this->userWithPermissions(['purchases.manage'], $this->business->id);
+        // Holding one resource's permissions says nothing about another, so the
+        // two must not bleed into each other.
+        $user = $this->userWithPermissions([
+            PermissionService::PURCHASES_VIEW,
+            PermissionService::PURCHASES_CREATE,
+        ], $this->business->id);
 
         $capabilities = $this->capabilitiesOf($this->tokenFor($user));
 
@@ -128,9 +138,24 @@ class UserCapabilitiesTest extends TestCase
     }
 
     /** @test */
+    public function a_retired_manage_slug_resolves_to_no_capability_at_all(): void
+    {
+        // The published list is derived from the same resolver the Gate uses, so
+        // a role that still holds a legacy `<resource>.manage` row must be
+        // reported as holding nothing. This documents the runtime model
+        // independently of whether the cleanup migration has removed the row.
+        $user = $this->userWithLiteralPermissions(['purchases.manage'], $this->business->id);
+
+        $this->assertSame([], $this->capabilitiesOf($this->tokenFor($user)));
+    }
+
+    /** @test */
     public function login_publishes_the_same_capabilities_as_me(): void
     {
-        $user = $this->userWithPermissions(['users.manage'], $this->business->id);
+        $user = $this->userWithPermissions([
+            PermissionService::USERS_VIEW,
+            PermissionService::USERS_UPDATE,
+        ], $this->business->id);
 
         // `login` and `me` are the two responses a session is built from. If they
         // disagreed, the permission gate would change its verdict across a page

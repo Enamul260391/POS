@@ -180,7 +180,11 @@ export function RoleForm({ target, onOpenChange }: RoleFormProps) {
   const isEdit = target.mode === "edit";
 
   return (
-    <Dialog open onOpenChange={onOpenChange}>
+    // `disablePointerDismissal` is Base UI's own switch for outside-click
+    // dismissal: the dialog ignores a press on the backdrop, so an accidental
+    // click outside cannot discard a half-filled role. The X button, Cancel and
+    // Escape are untouched, so every intentional close still works.
+    <Dialog open onOpenChange={onOpenChange} disablePointerDismissal>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit role" : "Create role"}</DialogTitle>
