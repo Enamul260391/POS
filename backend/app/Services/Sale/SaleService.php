@@ -6,11 +6,13 @@ namespace App\Services\Sale;
 
 use App\Exceptions\BusinessRuleException;
 use App\Models\CashRegisterTransaction;
+use App\Models\Customer;
 use App\Models\Payment;
 use App\Models\Product;
 use App\Models\Sale;
 use App\Models\StockMovement;
 use App\Services\CashRegister\CashRegisterService;
+use App\Services\Customer\CustomerLedgerService;
 use App\Services\Inventory\InventoryService;
 use App\Support\Money;
 use App\Support\Quantity;
@@ -51,6 +53,7 @@ final class SaleService
         private readonly InventoryService $inventory,
         private readonly CashRegisterService $cashRegisters,
         private readonly InvoiceNumberService $invoiceNumbers,
+        private readonly CustomerLedgerService $ledger,
     ) {}
 
     public function paginate(int $businessId, array $filters): LengthAwarePaginator
@@ -225,6 +228,22 @@ final class SaleService
                 }
             }
 
+            // Only the unpaid remainder becomes a receivable. A sale settled in
+            // full at the counter creates nothing here: nothing was ever owed, so
+            // an entry would be a receivable invented and immediately cancelled.
+            //
+            // `customer_id` is nullable in this schema, so a sale with a due but
+            // no customer is a real possibility. That case keeps its `due_amount`
+            // exactly as before and simply has no account to post to — there is
+            // no ledger to record a balance against, so inventing one would be
+            // worse than recording nothing.
+            if ($sale->customer_id !== null && ! Money::isZero($dueAmount)) {
+                $customer = Customer::query()->forBusiness($businessId)->whereKey($sale->customer_id)->first();
+                if ($customer !== null) {
+                    $this->ledger->recordSaleDue($customer, $dueAmount, (int) $sale->getKey(), $userId);
+                }
+            }
+
             return $this->find($businessId, $sale->getKey());
         });
     }
@@ -350,8 +369,8 @@ final class SaleService
                 // Snapshot of the product's cost at the moment of the sale, so a
                 // historical profit report reads the cost that was actually
                 // incurred rather than whatever the product costs today.
-                'unit_cost' => Money Cost::format($product->cost_price),
-                'discount' =>  discount,
+                'unit_cost' => Money::format($product->cost_price),
+                'discount' => $discount,
                 'tax' => $tax,
                 'total' => Money::add(Money::subtract($lineGross, $discount), $tax),
             ];

@@ -78,4 +78,28 @@ class SaleReturn extends Model
     {
         return $this->hasMany(SaleReturnItem::class);
     }
+
+    /**
+     * The refund payments this return settled, one row per method.
+     *
+     * Every refund against the return points back here through
+     * `payments.sale_return_id`, so the settlement of a return is readable from
+     * the return itself without searching the payments table for it.
+     */
+    public function payments(): HasMany
+    {
+        return $this->hasMany(Payment::class);
+    }
+
+    /**
+     * Only the refunds — the outbound payments this return caused.
+     *
+     * Scoped rather than relying on every row in the relation being a refund:
+     * the guarantee a reader needs is "this return has not been settled twice",
+     * and that has to hold whatever else ever gets linked to a return.
+     */
+    public function refundPayments(): HasMany
+    {
+        return $this->hasMany(Payment::class)->where('type', Payment::TYPE_REFUND)->orderBy('id');
+    }
 }

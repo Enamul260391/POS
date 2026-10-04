@@ -16,11 +16,14 @@ import type { SaleReturnReason } from "@/types/saleReturn";
  * are prefilled with what is still returnable, which makes the common case —
  * "give all of this back" — a single click.
  *
- * Phase 25: `refundMethod` was removed. `POST /sale-returns` does not accept
- * one (`sale_returns` has no such column), so the dialog no longer asks a
- * question the backend would discard. `restock` stays on the form because the
- * refund totals use it, and it is always `true`: the API restores stock for
- * every returned line that tracks it.
+ * The form does not carry a refund method. `POST /sale-returns` accepts an
+ * optional `refunds` split, but omitting it is not a gap: the API allocates the
+ * refund against what the sale actually collected, capped per method, and
+ * records the result. Asking the cashier to re-enter that would be a chance to
+ * disagree with the invoice it is derived from.
+ *
+ * `restock` stays on the form because the refund totals use it, and it is always
+ * `true`: the API restores stock for every returned line that tracks it.
  */
 
 /** Reasons the form accepts (all of `SaleReturnReason`). */

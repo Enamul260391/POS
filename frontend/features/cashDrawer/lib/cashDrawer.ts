@@ -24,6 +24,7 @@ export const CASH_TRANSACTION_LABELS: Readonly<
   opening: "Opening float",
   sale: "Cash sale",
   expense: "Expense",
+  refund: "Refund (sale return)",
   cash_in: "Cash in",
   cash_out: "Cash out",
   closing: "Closing count",
@@ -72,7 +73,10 @@ export function cashTransactionDirection(
   if (type === "sale" || type === "cash_in") {
     return "in";
   }
-  if (type === "expense" || type === "cash_out") {
+  // `refund` is grouped with the outflows for the same reason it is an outflow
+  // in the backend: it is cash handed back to a customer on a sale return, so it
+  // lowers the drawer exactly as an expense does.
+  if (type === "expense" || type === "refund" || type === "cash_out") {
     return "out";
   }
   return "neutral";

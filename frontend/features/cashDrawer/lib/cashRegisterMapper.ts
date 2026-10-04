@@ -47,6 +47,12 @@ export function toCashTransactionType(value: string): CashTransactionType {
       return "sale";
     case "expense":
       return "expense";
+    // A customer refund is money leaving the drawer. It must be named
+    // explicitly: the fallback below is `cash_in`, so without this case a
+    // refund would render as an *inflow* and the history table would show the
+    // sign of a return the wrong way round.
+    case "refund":
+      return "refund";
     case "cash_out":
       return "cash_out";
     case "closing":

@@ -23,7 +23,11 @@
       }
     ],
     "refundTotal": 173.25,
-    "refundMethod": "mobile_banking",
+    "settlement": {
+      "refunded": 173.25,
+      "credited": 0,
+      "byMethod": { "card": 173.25 }
+    },
     "refundProvider": "bKash",
     "note": "Customer brought one packet back damaged; refunded to bKash.",
     "processedBy": "Sumaiya Akter",

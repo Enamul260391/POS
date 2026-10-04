@@ -320,6 +320,54 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             ->middleware('can:reports.view')
             ->name('reports.dashboard');
 
+        // Reports Stage 7 — customer outstanding / receivables. A **position**
+        // report, not a period one: `ReportService::customerOutstandingReport()`
+        // sums the whole ledger per customer and never narrows that balance by
+        // the requested dates. The window applies only to the separately named
+        // `period_movement`, so a user moving the date filter cannot make a
+        // customer's current balance appear to change. Same single capability as
+        // every other report, and no customer-management permission is required.
+        Route::get('/reports/customer-outstanding', [ReportController::class, 'customerOutstanding'])
+            ->middleware('can:reports.view')
+            ->name('reports.customer-outstanding');
+
+        // Reports Stage 8 — supplier outstanding / payables. The payables mirror of
+        // Stage 7, and a **position** report for the same reason: the balance is
+        // `suppliers.opening_balance + SUM(purchases.due_amount)` over the whole
+        // history and is never narrowed by the requested dates. The window applies
+        // only to the separately named `period_movement`, so moving the date filter
+        // cannot make a supplier's current payable appear to change. There is no
+        // supplier ledger table and none is introduced — see
+        // `ReportService::supplierOutstandingReport()` for why the purchase header
+        // columns are a complete source here. Same single capability as every other
+        // report, and no supplier-management permission is required.
+        Route::get('/reports/supplier-outstanding', [ReportController::class, 'supplierOutstanding'])
+            ->middleware('can:reports.view')
+            ->name('reports.supplier-outstanding');
+
+        // Reports Stage 9 — cash register movement. A **period activity**
+        // report, not a position one: the window genuinely restricts which
+        // movements are counted, because a drawer movement is a dated event
+        // rather than a standing balance.
+        //
+        // The source of truth is `cash_register_transactions` alone — the sale,
+        // expense and return modules are read only to understand what a
+        // movement *references*, never to re-derive one. A card or bank sale
+        // posts no drawer row at all, so it cannot appear here, and the
+        // opening / closing rows are markers excluded from the cash in / out
+        // totals by `CashRegisterTransaction::INFLOW_TYPES` / `OUTFLOW_TYPES`
+        // exactly as the drawer balance itself excludes them.
+        //
+        // Two conventionally-validated filters ride on the shared
+        // `ReportFilterRequest`: `cash_register_id` (same-business only, so a
+        // foreign id is a 422 on the established rule) and `transaction_type`
+        // (canonical types only, so an unknown value is refused rather than
+        // silently matching nothing). Same single capability as every other
+        // report — `reports.view` and nothing else.
+        Route::get('/reports/cash-register-movements', [ReportController::class, 'cashRegisterMovements'])
+            ->middleware('can:reports.view')
+            ->name('reports.cash-register-movements');
+
         // Inventory — movement log + manual stock adjustment. Stock is only
         // ever written through the ledger, never through a product field.
         // The log is a read; the adjustment is the `inventory.manage` write.

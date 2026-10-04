@@ -78,6 +78,20 @@ final class Money
     }
 
     /**
+     * Flip the sign of an amount.
+     *
+     * Used where a *magnitude* is known but the ledger needs a direction —
+     * a customer who owes us ৳500 is entered as `+500`, so a payment of ৳500
+     * becomes `Money::negate('500.00')` → `-500.00`. Making the flip an explicit
+     * operation rather than something each caller writes by hand is what keeps
+     * the sign convention in one place.
+     */
+    public static function negate(string|int|float|null $value): string
+    {
+        return self::subtract('0', $value);
+    }
+
+    /**
      * Whether two amounts are equal at the storage scale.
      */
     public static function equals(string|int|float|null $a, string|int|float|null $b): bool

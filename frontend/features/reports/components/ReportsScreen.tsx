@@ -3,6 +3,8 @@
 import { useCallback, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { CashRegisterMovementCard } from "@/features/reports/components/CashRegisterMovementCard";
+import { CustomerOutstandingCard } from "@/features/reports/components/CustomerOutstandingCard";
 import { DailySalesCard } from "@/features/reports/components/DailySalesCard";
 import { ExpenseSummaryCard } from "@/features/reports/components/ExpenseSummaryCard";
 import { LowStockCard } from "@/features/reports/components/LowStockCard";
@@ -12,7 +14,11 @@ import { PurchaseSummaryCard } from "@/features/reports/components/PurchaseSumma
 import { ReportMetric } from "@/features/reports/components/ReportMetric";
 import { ReportsDateFilter } from "@/features/reports/components/ReportsDateFilter";
 import { SalesSummaryCard } from "@/features/reports/components/SalesSummaryCard";
+import { SupplierOutstandingCard } from "@/features/reports/components/SupplierOutstandingCard";
+import { TopCategoriesCard } from "@/features/reports/components/TopCategoriesCard";
+import { TopCustomersCard } from "@/features/reports/components/TopCustomersCard";
 import { TopProductsCard } from "@/features/reports/components/TopProductsCard";
+import { TopUsersCard } from "@/features/reports/components/TopUsersCard";
 import {
   resolveDateRange,
   toApiDate,
@@ -43,10 +49,22 @@ import type { DashboardReport } from "@/types/report";
  *     hands back one mapped object, so a card is a pure function of the APIs
  *     own numbers.
  *
- * Four cards (payment methods, daily sales, monthly sales, top products) and
- * the low-stock item list have no backend report source; they render an explicit
- * "not available" panel rather than a number the server never produced. See
- * `REPORT_UNAVAILABLE_REASONS` in `@/types/report` for the details.
+ * The sales trend cards, the top-products leaderboard, the sales-by-category
+ * leaderboard, the sales-by-customer leaderboard and the sales-by-staff
+ * leaderboard read `metrics.daily_series`, `metrics.monthly_series`,
+ * `metrics.top_products`, `metrics.top_categories`, `metrics.top_customers` and
+ * `metrics.top_users` off the sales response this screen already loads, so they
+ * issue no request of their own. The only card still showing an "unavailable"
+ * panel is the low-stock item list — see `REPORT_UNAVAILABLE_REASONS` in
+ * `@/types/report`.
+ *
+ * The customer outstanding card is the one report on this screen that has an
+ * endpoint of its own: it is a **position** report (who owes whom *now*) rather
+ * than a period one, so its balances come from `customer_ledger_entries` and are
+ * not narrowed by the date filter — changing the preset refreshes it like
+ * everything else, but the money does not move. Only the movement figure beside
+ * it is windowed, and the card's caption says which is which so the two are never
+ * confused.
  */
 export function ReportsScreen() {
   const [filter, setFilter] = useState<ReportDateFilter>({ preset: "month" });
@@ -111,12 +129,18 @@ export function ReportsScreen() {
           <TodayStrip dashboard={data.dashboard} isRefreshing={isRefreshing} />
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <SalesSummaryCard sales={data.sales} />
-            <DailySalesCard />
-            <TopProductsCard />
-            <ProfitSummaryCard profitLoss={data.profitLoss} sales={data.sales} />
+            <SalesSummaryCard sales={data.sales} profitLoss={data.profitLoss} />
+            <DailySalesCard sales={data.sales} />
+            <TopProductsCard sales={data.sales} />
+            <TopCategoriesCard sales={data.sales} />
+            <TopCustomersCard sales={data.sales} />
+            <TopUsersCard sales={data.sales} />
+            <ProfitSummaryCard profitLoss={data.profitLoss} />
+            <CashRegisterMovementCard report={data.cashRegisterMovements} />
+            <CustomerOutstandingCard report={data.customerOutstanding} />
+            <SupplierOutstandingCard report={data.supplierOutstanding} />
             <PurchaseSummaryCard purchases={data.purchases} />
-            <MonthlySalesCard />
+            <MonthlySalesCard sales={data.sales} />
             <ExpenseSummaryCard expenses={data.expenses} />
             <LowStockCard inventory={data.inventory} />
           </div>

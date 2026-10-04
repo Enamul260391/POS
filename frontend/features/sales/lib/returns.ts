@@ -180,18 +180,34 @@ export function refundMethodLabel(method: PaymentMethod): string {
 }
 
 /**
- * How a refund was paid out, or `—`.
+ * How a refund was paid out, as one line of words, or `—`.
  *
- * `sale_returns` stores neither a method nor a provider, so a return that came
- * back from the API shows `—` rather than a method nobody recorded.
+ * Reads the recorded settlement rather than a single method, because a return
+ * can legitimately be paid through several at once. A return whose settlement
+ * was not reported — the list view — shows `—` rather than a guess, and a fully
+ * credited one says so explicitly instead of implying money was handed over.
  */
 export function saleReturnRefundLabel(saleReturn: SaleReturn): string {
   if (saleReturn.refundProvider?.trim()) {
     return saleReturn.refundProvider.trim();
   }
-  return saleReturn.refundMethod === null
-    ? "—"
-    : refundMethodLabel(saleReturn.refundMethod);
+
+  const settlement = saleReturn.settlement;
+  if (settlement === null) {
+    return "—";
+  }
+
+  const labels: string[] = [];
+  for (const [method, amount] of Object.entries(settlement.byMethod)) {
+    if (amount > 0) {
+      labels.push(refundMethodLabel(method as PaymentMethod));
+    }
+  }
+  if (labels.length === 0) {
+    return settlement.credited > 0 ? "Customer credit" : "—";
+  }
+
+  return settlement.credited > 0 ? `${labels.join(" + ")} + credit` : labels.join(" + ");
 }
 
 /** Returned units of one sale return — the "Items" column of the history. */

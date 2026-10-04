@@ -5,69 +5,84 @@ import { memo } from "react";
 import { ReportCard } from "@/features/reports/components/ReportCard";
 import { ReportMetric } from "@/features/reports/components/ReportMetric";
 import { formatMoney } from "@/features/pos/lib/format";
-import type { ProfitLossReport, SalesReport } from "@/types/report";
+import type { ProfitLossReport } from "@/types/report";
 
 interface ProfitSummaryCardProps {
   /** The `GET /reports/profit-loss` response, already mapped. */
   profitLoss: ProfitLossReport;
-  /** The `GET /reports/sales` response, for the revenue line. */
-  sales: SalesReport;
 }
 
 /**
  * Report: profit summary — `GET /reports/profit-loss`.
  *
- * This card is the one place the API's *absence* of an answer is the content.
- * `ReportService::profitLoss()` returns `available: false` with a `limitation`
- * string, because `sale_items` does not store `unit_cost`: the cost of the
- * units on a historical invoice line is unrecoverable, so gross profit and net
- * profit cannot be produced without either inventing a cost or substituting
- * today's product cost — which would restate history using current prices.
+ * Every figure is the API's own aggregate for the selected window. Cost of
+ * goods is real, not estimated: `sale_items.unit_cost` snapshots the product's
+ * `cost_price` at the moment of sale, so a historical line is costed at what
+ * it actually cost rather than at today's price.
  *
- * So the card shows revenue (a figure the sales report does send), renders
- * every cost-derived figure as "—", and prints the API's own explanation
- * verbatim. Nothing here is computed as a profit: a client-side
- * "revenue minus expenses" is deliberately **not** shown, because the API
- * reports profit as unavailable and the screen must not present a substitute in
- * its place.
+ * The API withholds the cost-derived figures (`null`) whenever any line in the
+ * period has no recorded unit cost, because summing an unknown cost as zero
+ * would overstate the profit. This card renders a dash for those and prints the
+ * APIs own explanation verbatim — it never substitutes a client-side
+ * "revenue minus expenses", which is exactly the guess the backend declined to
+ * make.
  */
 export const ProfitSummaryCard = memo(function ProfitSummaryCard({
   profitLoss,
-  sales,
 }: ProfitSummaryCardProps) {
-  const netSales = sales.grossSales;
+  const revenue = profitLoss.revenue;
+  // A withheld figure stays a dash; it is never coerced to 0.
+  const dash = "—";
+  const withheldHint = `${profitLoss.unpricedLines} unpriced line${profitLoss.unpricedLines === 1 ? "" : "s"}`;
 
   return (
     <ReportCard
       title="Profit summary"
       description={
-        netSales > 0
-          ? `${formatMoney(netSales)} revenue in this period`
+        revenue > 0
+          ? `${formatMoney(revenue)} revenue in this period`
           : "No sales in this period"
       }
     >
       <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
-        <ReportMetric label="Revenue" value={formatMoney(netSales)} />
+        <ReportMetric
+          label="Revenue"
+          value={formatMoney(revenue)}
+          hint={
+            profitLoss.discount > 0 || profitLoss.tax > 0
+              ? `-${formatMoney(profitLoss.discount)} off · ${formatMoney(profitLoss.tax)} tax`
+              : undefined
+          }
+        />
         <ReportMetric
           label="Cost of goods"
-          value="—"
-          hint={profitLoss.available ? undefined : "Cost unavailable"}
+          value={profitLoss.costOfGoods === null ? dash : formatMoney(profitLoss.costOfGoods)}
+          hint={profitLoss.costOfGoods === null ? withheldHint : undefined}
         />
         <ReportMetric
           label="Gross profit"
-          value="—"
-          hint={profitLoss.available ? undefined : "Cost unavailable"}
+          value={profitLoss.grossProfit === null ? dash : formatMoney(profitLoss.grossProfit)}
+          hint={
+            profitLoss.grossMarginPercent === null
+              ? undefined
+              : `${profitLoss.grossMarginPercent}% margin`
+          }
+        />
+        <ReportMetric
+          label="Expenses"
+          value={formatMoney(profitLoss.totalExpense)}
         />
         <ReportMetric
           label="Net profit"
-          value="—"
-          hint={profitLoss.available ? undefined : "Cost unavailable"}
+          value={profitLoss.netProfit === null ? dash : formatMoney(profitLoss.netProfit)}
+          hint={profitLoss.netProfit === null ? withheldHint : undefined}
         />
       </div>
-      <p className="text-xs text-muted-foreground">
-        {profitLoss.limitation ??
-          "Historical cost of goods sold is not available for this period."}
-      </p>
+      {profitLoss.limitation && (
+        <p className="text-xs text-muted-foreground">
+          {profitLoss.limitation}
+        </p>
+      )}
     </ReportCard>
   );
 });

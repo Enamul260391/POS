@@ -17,8 +17,11 @@ use Illuminate\Support\Facades\DB;
 final class CashRegisterService
 {
     public const DEFAULT_PER_PAGE = 20;
+
     public const MAX_PER_PAGE = 100;
+
     public const ALREADY_OPEN_MESSAGE = 'A cash register is already open for this user.';
+
     public const ALREADY_CLOSED_MESSAGE = 'Cash register is already closed.';
 
     /** Refusal used when a write targets a row the API did not write by hand. */
@@ -47,6 +50,7 @@ final class CashRegisterService
                 'note' => 'Register opened',
                 'created_by' => $userId,
             ]);
+
             return $this->present($this->find($businessId, (int) $register->getKey()));
         });
     }
@@ -57,6 +61,7 @@ final class CashRegisterService
         if ($register === null) {
             throw new BusinessRuleException('No cash register is currently open.', 404);
         }
+
         return $register;
     }
 
@@ -86,6 +91,7 @@ final class CashRegisterService
         if ((int) $register->opened_by !== $userId) {
             throw new BusinessRuleException('Cash register is not owned by this user.', 404);
         }
+
         return $register;
     }
 
@@ -98,6 +104,7 @@ final class CashRegisterService
             $query->where('type', $filters['type']);
         }
         $perPage = max(1, min((int) ($filters['per_page'] ?? self::DEFAULT_PER_PAGE), self::MAX_PER_PAGE));
+
         return $query->orderByDesc('created_at')->orderByDesc('id')->paginate($perPage);
     }
 
@@ -105,6 +112,7 @@ final class CashRegisterService
     {
         return DB::transaction(function () use ($businessId, $userId, $registerId, $data): CashRegisterTransaction {
             $this->assertOpenAndOwned($businessId, $userId, $registerId);
+
             return CashRegisterTransaction::create([
                 'business_id' => $businessId,
                 'cash_register_id' => $registerId,
@@ -193,13 +201,14 @@ final class CashRegisterService
         int $referenceId,
         ?string $note = null,
     ): ?CashRegisterTransaction {
-        if (! in_array($type, [CashRegisterTransaction::TYPE_SALE, CashRegisterTransaction::TYPE_EXPENSE], true)) {
+        if (! in_array($type, CashRegisterTransaction::AUTOMATIC_TYPES, true)) {
             throw new \InvalidArgumentException('Unsupported automatic cash transaction type.');
         }
         $register = $this->openQuery($businessId, $userId)->lockForUpdate()->first();
         if ($register === null) {
             return null;
         }
+
         return CashRegisterTransaction::create([
             'business_id' => $businessId,
             'cash_register_id' => $register->getKey(),
@@ -235,6 +244,7 @@ final class CashRegisterService
                 'status' => CashRegister::STATUS_CLOSED,
                 'notes' => ($data['notes'] ?? null) !== null && ($data['notes'] ?? '') !== '' ? $data['notes'] : $register->notes,
             ])->save();
+
             return $this->present($this->find($businessId, $registerId));
         });
     }
@@ -249,10 +259,8 @@ final class CashRegisterService
         $query = CashRegisterTransaction::query()->forBusiness($businessId)->where('cash_register_id', $registerId);
         $filters['business_id'] = $businessId;
         $this->applyDates($query, $filters);
-        $row = $query->selectRaw('COUNT(*) as transaction_count')
-            ->selectRaw('COALESCE(SUM(CASE WHEN type IN (?, ?) THEN amount ELSE 0 END), 0) as total_in', CashRegisterTransaction::INFLOW_TYPES)
-            ->selectRaw('COALESCE(SUM(CASE WHEN type IN (?, ?) THEN amount ELSE 0 END), 0) as total_out', CashRegisterTransaction::OUTFLOW_TYPES)
-            ->first();
+        $row = $this->withFlowTotals($query)->selectRaw('COUNT(*) as transaction_count')->first();
+
         return [
             'cash_register_id' => $register->getKey(),
             'opening_balance' => Money::format($register->opening_balance),
@@ -284,12 +292,50 @@ final class CashRegisterService
      */
     private function totals(CashRegister $register): object
     {
-        return CashRegisterTransaction::query()
-            ->forBusiness((int) $register->business_id)
-            ->where('cash_register_id', $register->getKey())
-            ->selectRaw('COALESCE(SUM(CASE WHEN type IN (?, ?) THEN amount ELSE 0 END), 0) as total_in', CashRegisterTransaction::INFLOW_TYPES)
-            ->selectRaw('COALESCE(SUM(CASE WHEN type IN (?, ?) THEN amount ELSE 0 END), 0) as total_out', CashRegisterTransaction::OUTFLOW_TYPES)
-            ->first();
+        return $this->withFlowTotals(
+            CashRegisterTransaction::query()
+                ->forBusiness((int) $register->business_id)
+                ->where('cash_register_id', $register->getKey())
+        )->first();
+    }
+
+    /**
+     * Add the inflow/outflow aggregates to a transaction query.
+     *
+     * The placeholder list is **derived from the constant** rather than written
+     * out by hand, because the two must agree exactly: a literal `IN (?, ?)`
+     * binds two values, so the moment a third type joins `INFLOW_TYPES` or
+     * `OUTFLOW_TYPES` — as `refund` did for the outflows — the driver runs out of
+     * placeholders and the whole read fails with "column index out of range"
+     * rather than quietly returning the wrong totals. Building the list from the
+     * same array that is bound as the values makes that class of drift
+     * impossible.
+     */
+    private function withFlowTotals(Builder $query): Builder
+    {
+        return $query
+            ->selectRaw(
+                'COALESCE(SUM(CASE WHEN type IN ('.$this->placeholders(CashRegisterTransaction::INFLOW_TYPES).') THEN amount ELSE 0 END), 0) as total_in',
+                CashRegisterTransaction::INFLOW_TYPES
+            )
+            ->selectRaw(
+                'COALESCE(SUM(CASE WHEN type IN ('.$this->placeholders(CashRegisterTransaction::OUTFLOW_TYPES).') THEN amount ELSE 0 END), 0) as total_out',
+                CashRegisterTransaction::OUTFLOW_TYPES
+            );
+    }
+
+    /**
+     * One `?` per bound value.
+     *
+     * A list is never empty here — both constants classify at least one type —
+     * but the empty case is guarded anyway so a future constant cannot produce
+     * the syntactically invalid `IN ()`.
+     *
+     * @param  array<int, string>  $types
+     */
+    private function placeholders(array $types): string
+    {
+        return $types === [] ? 'NULL' : implode(', ', array_fill(0, count($types), '?'));
     }
 
     private function present(CashRegister $register): CashRegister
@@ -374,6 +420,7 @@ final class CashRegisterService
         if ($register->status !== CashRegister::STATUS_OPEN) {
             throw new BusinessRuleException(self::ALREADY_CLOSED_MESSAGE);
         }
+
         return $register;
     }
 
