@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Collection;
+use Illuminate\Validation\ValidationException;
 use Laravel\Sanctum\HasApiTokens;
 
 /**
@@ -24,8 +25,19 @@ class User extends Authenticatable
 
     public const STATUS_INACTIVE = 'inactive';
 
+    /**
+     * The one and only platform identity value: the Platform Owner.
+     *
+     * `users.platform_role` is NULL for every normal business user, and the
+     * unique index on the column allows at most one row to hold this value for
+     * the whole application (see the migration
+     * `2026_10_07_100000_add_platform_role_to_users_table`).
+     */
+    public const PLATFORM_ROLE_OWNER = 'owner';
+
     protected $fillable = [
         'business_id',
+        'platform_role',
         'name',
         'email',
         'phone',
@@ -47,6 +59,49 @@ class User extends Authenticatable
             'password' => 'hashed',
             'status' => 'string',
         ];
+    }
+
+    /**
+     * Guard the platform identity invariants that the schema cannot express.
+     *
+     * The database guarantees "at most one owner" through the unique index on
+     * `platform_role`, but "the owner belongs to no business" and "only the
+     * `owner` value exists" are model-level rules. A `saving` hook is the
+     * smallest validation that covers every write path — factory, service,
+     * seeder, tinker — without touching the tenant permission model.
+     *
+     * @throws \Illuminate\Validation\ValidationException when the identity is inconsistent
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (User $user): void {
+            if ($user->platform_role === null) {
+                return;
+            }
+
+            if ($user->platform_role !== self::PLATFORM_ROLE_OWNER) {
+                throw ValidationException::withMessages([
+                    'platform_role' => 'The only recognised platform role is "owner".',
+                ]);
+            }
+
+            if ($user->business_id !== null) {
+                throw ValidationException::withMessages([
+                    'business_id' => 'The platform owner must not belong to a business.',
+                ]);
+            }
+        });
+    }
+
+    /**
+     * Is this user the (single) Platform Owner?
+     *
+     * Pure identity check: it reads only `platform_role` and grants nothing —
+     * no business-management authority, no platform permissions.
+     */
+    public function isPlatformOwner(): bool
+    {
+        return $this->platform_role === self::PLATFORM_ROLE_OWNER;
     }
 
     public function business(): BelongsTo
@@ -275,7 +330,7 @@ class User extends Authenticatable
     public function hasRole(string $slug): bool
     {
         return $this->roles
-            ->contains(static fn (Role $role): bool => $role->slug === $slug
+            ->contains(fn (Role $role): bool => $role->slug === $slug
                 && (int) $role->business_id === (int) $this->business_id);
     }
 

@@ -1,6 +1,8 @@
 <?php
 
 use App\Exceptions\ApiExceptionRenderer;
+use App\Http\Middleware\EnsureBusinessUser;
+use App\Http\Middleware\EnsurePlatformOwner;
 use App\Http\Middleware\EnsureUserIsActive;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -98,8 +100,23 @@ return Application::configure(basePath: dirname(__DIR__))
         // account deactivated after it logged in keeps working until the token
         // expires. Aliased here and applied to the protected route groups in
         // routes/api.php, where it always runs after `auth:sanctum`.
+        //
+        // The two identity boundaries are aliased alongside it, applied to the
+        // route groups they belong to (also in routes/api.php):
+        //
+        //   'platform' -> EnsurePlatformOwner — platform route groups only;
+        //                 allows the Platform Owner and nothing else.
+        //   'business' -> EnsureBusinessUser  — tenant operational groups only;
+        //                 allows authenticated non-platform users that hold a
+        //                 business_id, and nothing else.
+        //
+        // Both run after `auth:sanctum` + `active` by construction of those
+        // groups, and both are identity checks only — capabilities stay with
+        // `can:`, business state stays in the services (later steps).
         $middleware->alias([
             'active' => EnsureUserIsActive::class,
+            'platform' => EnsurePlatformOwner::class,
+            'business' => EnsureBusinessUser::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

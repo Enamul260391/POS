@@ -18,7 +18,7 @@ import {
 import { env } from "@/lib/env";
 import { useAuthStore } from "@/stores/useAuthStore";
 
-/** Where a cashier lands after signing in. */
+/** Where a tenant user lands after signing in. */
 const DEFAULT_REDIRECT = "/pos";
 
 /** Inline validation or server message rendered under a field. */
@@ -82,7 +82,7 @@ export function LoginForm() {
 
   async function onSubmit(values: LoginFormValues) {
     try {
-      await login({ email: values.email.trim(), password: values.password });
+      const user = await login({ email: values.email.trim(), password: values.password });
       // `AuthGate` passes the originally requested route as `?next=`; the
       // fallback is the till. Only same-origin, absolute paths are honoured, so
       // a crafted link cannot bounce the user off-site after signing in.
@@ -90,6 +90,8 @@ export function LoginForm() {
       const destination =
         next !== null && next.startsWith("/") && !next.startsWith("//")
           ? next
+          : user.isPlatformOwner
+          ? "/platform"
           : DEFAULT_REDIRECT;
       // `replace` rather than `push`: the login route must not stay in history,
       // otherwise Back would return to a page the user may no longer see.

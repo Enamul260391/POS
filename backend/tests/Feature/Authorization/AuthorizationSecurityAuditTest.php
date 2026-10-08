@@ -88,7 +88,17 @@ class AuthorizationSecurityAuditTest extends TestCase
     /**
      * @test
      *
-     * Every `can:` ability on a live route must be a declared capability.
+     * Every `can:` ability on a live *tenant* route must be a declared tenant
+     * capability.
+     *
+     * Platform routes (`api/v1/platform/*`) are excluded by design: the Step 2
+     * boundary keeps platform authorisation (`platform.businesses.*` Gates in
+     * `AppServiceProvider::PLATFORM_ABILITIES`) structurally separate from the
+     * tenant permission model, so `PermissionService::isKnown()` is *false*
+     * for them on purpose (see
+     * `PlatformOwnerAuthorizationBoundaryTest::platform_abilities_do_not_appear_in_the_tenant_permission_catalogue`).
+     * Including them here would demand the very merge Step 2 forbids. They
+     * are audited in the other direction below instead.
      *
      * Read from `Router::getRoutes()` rather than from a fixture list, so a route
      * added after this test was written is included and a route moved off a valid
@@ -98,7 +108,7 @@ class AuthorizationSecurityAuditTest extends TestCase
     {
         $unknown = [];
 
-        foreach ($this->liveRouteCapabilities() as $capability => $routes) {
+        foreach ($this->liveTenantRouteCapabilities() as $capability => $routes) {
             if (! PermissionService::isKnown($capability)) {
                 $unknown[$capability] = $routes;
             }
@@ -110,7 +120,12 @@ class AuthorizationSecurityAuditTest extends TestCase
     /**
      * @test
      *
-     * No route may be guarded by a retired `<resource>.manage` slug.
+     * No *tenant* route may be guarded by a retired `<resource>.manage` slug.
+     *
+     * Platform routes are out of scope here for the same reason as above:
+     * each `platform.businesses.*` ability resolves through the platform
+     * identity, never through `PermissionService::slugsFor()`, so no retired
+     * slug can ever authorise them.
      *
      * `inventory.manage` and `cash_registers.manage` are *live capability names*
      * and legitimately appear in the route table, so the assertion is on the
@@ -121,7 +136,7 @@ class AuthorizationSecurityAuditTest extends TestCase
     {
         $offenders = [];
 
-        foreach ($this->liveRouteCapabilities() as $capability => $routes) {
+        foreach ($this->liveTenantRouteCapabilities() as $capability => $routes) {
             foreach (PermissionService::slugsFor($capability) as $slug) {
                 if (in_array($slug, self::RETIRED_SLUGS, true)) {
                     $offenders[$capability] = ['slug' => $slug, 'routes' => $routes];
@@ -135,8 +150,14 @@ class AuthorizationSecurityAuditTest extends TestCase
     /**
      * @test
      *
-     * The route surface and the capability table agree exactly — 55 each, no
-     * capability that nothing routes, no route capability nothing declares.
+     * The tenant route surface and the tenant capability table agree exactly —
+     * 55 each, no capability that nothing routes, no route capability nothing
+     * declares.
+     *
+     * Platform routes are excluded for the same reason as above: the five
+     * `platform.businesses.*` abilities are not tenant capabilities and must
+     * never be. They are pinned to their own declared set in
+     * `platform_routes_use_only_declared_platform_abilities` below.
      *
      * Asserted as an equality of two sets rather than as two counts, so a
      * capability added to `PermissionService` without a route (and therefore
@@ -144,7 +165,7 @@ class AuthorizationSecurityAuditTest extends TestCase
      */
     public function every_capability_is_routed_and_every_route_capability_is_declared(): void
     {
-        $routed = array_keys($this->liveRouteCapabilities());
+        $routed = array_keys($this->liveTenantRouteCapabilities());
 
         sort($routed);
         $expected = PermissionService::ALL_CAPABILITIES;
@@ -152,6 +173,42 @@ class AuthorizationSecurityAuditTest extends TestCase
 
         $this->assertSame($expected, $routed);
         $this->assertCount(55, $routed, 'The 55-capability route contract must remain intact.');
+    }
+
+    /**
+     * @test
+     *
+     * The platform route surface agrees exactly with the declared platform
+     * abilities: every `can:` on an `api/v1/platform/*` route names a member
+     * of `AppServiceProvider::PLATFORM_ABILITIES`, and every declared ability
+     * guards at least one platform route — so neither a typo'd ability nor an
+     * unrouted one can hide.
+     */
+    public function platform_routes_use_only_declared_platform_abilities(): void
+    {
+        $routed = $this->livePlatformRouteCapabilities();
+        $declared = \App\Providers\AppServiceProvider::PLATFORM_ABILITIES;
+
+        foreach (array_keys($routed) as $capability) {
+            $this->assertContains(
+                $capability,
+                $declared,
+                "Platform route ability {$capability} must be a declared platform ability.",
+            );
+        }
+
+        foreach ($declared as $ability) {
+            $this->assertArrayHasKey(
+                $ability,
+                $routed,
+                "Declared platform ability {$ability} must guard at least one platform route.",
+            );
+        }
+
+        $this->assertSame([], array_intersect(
+            array_keys($routed),
+            PermissionService::ALL_CAPABILITIES,
+        ), 'Platform and tenant capabilities must never overlap.');
     }
 
     /**
@@ -166,7 +223,7 @@ class AuthorizationSecurityAuditTest extends TestCase
      */
     public function the_capabilities_whose_names_differ_from_their_slugs_keep_their_names(): void
     {
-        $routed = $this->liveRouteCapabilities();
+        $routed = $this->liveTenantRouteCapabilities();
 
         foreach ([
             PermissionService::INVENTORY_MANAGE,
@@ -523,9 +580,56 @@ class AuthorizationSecurityAuditTest extends TestCase
      */
     private function liveRouteCapabilities(): array
     {
+        return $this->collectRouteCapabilities(null);
+    }
+
+    /**
+     * Capabilities on live routes outside `api/v1/platform/*`.
+     *
+     * The tenant-authorization audit surface: platform abilities are excluded
+     * (see `no_live_route_guards_itself_with_an_unknown_capability`).
+     *
+     * @return array<string, array<int, string>>
+     */
+    private function liveTenantRouteCapabilities(): array
+    {
+        return $this->collectRouteCapabilities(false);
+    }
+
+    /**
+     * Capabilities on live routes inside `api/v1/platform/*`.
+     *
+     * The platform-authorization audit surface, pinned to
+     * `AppServiceProvider::PLATFORM_ABILITIES` by
+     * `platform_routes_use_only_declared_platform_abilities`.
+     *
+     * @return array<string, array<int, string>>
+     */
+    private function livePlatformRouteCapabilities(): array
+    {
+        return $this->collectRouteCapabilities(true);
+    }
+
+    /**
+     * Collect `can:` capabilities, optionally restricted to platform routes.
+     *
+     * @return array<string, array<int, string>>
+     */
+    private function collectRouteCapabilities(?bool $platformOnly): array
+    {
         $capabilities = [];
 
         foreach (app(Router::class)->getRoutes() as $route) {
+            $isPlatform = str_starts_with($route->uri(), 'api/v1/platform');
+
+            if ($platformOnly === true && ! $isPlatform) {
+                continue;
+            }
+
+            if ($platformOnly === false && $isPlatform) {
+                continue;
+            }
+
             foreach ($route->gatherMiddleware() as $middleware) {
                 if (! is_string($middleware) || ! str_starts_with($middleware, 'can:')) {
                     continue;

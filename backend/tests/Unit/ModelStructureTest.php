@@ -102,6 +102,8 @@ class ModelStructureTest extends TestCase
     {
         $fillable = (new User)->getFillable();
         $this->assertContains('business_id', $fillable);
+        // Platform identity marker (nullable; NULL = not a platform identity).
+        $this->assertContains('platform_role', $fillable);
         $this->assertContains('name', $fillable);
         $this->assertContains('email', $fillable);
         $this->assertContains('phone', $fillable);

@@ -28,9 +28,18 @@ use Illuminate\Support\Facades\Broadcast;
  *
  * A null `business_id` (a user with no tenant) matches no channel, because
  * `(int) null === 0` and no real business has id 0.
+ *
+ * The Platform Owner is refused *explicitly* rather than through that
+ * coercion: it is a platform identity (`User::isPlatformOwner()`), never a
+ * tenant, so it must not subscribe even to the degenerate `business.0`
+ * channel name. The tenant rule itself is unchanged.
  * ---------------------------------------------------------------------------
  */
 Broadcast::channel('business.{businessId}', function (User $user, int $businessId): bool {
+    if ($user->isPlatformOwner()) {
+        return false;
+    }
+
     return (int) $user->business_id === $businessId;
 });
 

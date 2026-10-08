@@ -189,6 +189,12 @@ class ApiResponseTest extends TestCase
         $this->assertSame([
             'id' => $user->getKey(),
             'business_id' => $business->getKey(),
+            // The authenticated-user contract: the platform identity flag
+            // travels alongside the (nullable) business id. This user is a
+            // normal business user, so it is `false` here; the Platform Owner
+            // case is asserted end-to-end in
+            // `Tests\Feature\PlatformOwner\PlatformOwnerAuthIdentityTest`.
+            'is_platform_owner' => false,
             'name' => 'Ada Lovelace',
             'email' => 'ada@example.com',
             'created_at' => $user->created_at->toDateTimeString(),

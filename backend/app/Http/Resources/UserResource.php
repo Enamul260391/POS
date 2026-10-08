@@ -24,6 +24,14 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * The list is resolved by `PermissionService`, the same authority the Gate
  * enforces with, so what the client is told and what the API accepts are the
  * same answer computed once.
+ *
+ * `business_id` is nullable and `is_platform_owner` is the explicit platform
+ * identity marker: the Platform Owner carries `business_id = null` and
+ * `is_platform_owner = true`, every business user carries their business id
+ * and `is_platform_owner = false`. The flag is resolved through
+ * {@see \App\Models\User::isPlatformOwner()} — never re-derived from
+ * `business_id`, email or id — so the client and the server read the same
+ * identity rule.
  */
 class UserResource extends JsonResource
 {
@@ -37,6 +45,7 @@ class UserResource extends JsonResource
         return [
             'id' => $this->id,
             'business_id' => $this->business_id,
+            'is_platform_owner' => $this->resource->isPlatformOwner(),
             'name' => $this->name,
             'email' => $this->email,
             'created_at' => $this->created_at?->toDateTimeString(),

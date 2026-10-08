@@ -14,6 +14,37 @@ use Illuminate\Support\ServiceProvider;
 class AppServiceProvider extends ServiceProvider
 {
     /**
+     * Platform-level Gate abilities.
+     *
+     * These are **platform** authorisation concepts, not tenant capabilities.
+     * They must never appear in {@see PermissionService::ALL_CAPABILITIES},
+     * the `permissions` catalogue, roles, `permission_role` or
+     * `user_permissions` — the Platform Owner is not a tenant and holds no
+     * tenant permission. Keeping the names here (rather than in
+     * `PermissionService`) is what makes that separation structural instead
+     * of a convention someone has to remember.
+     *
+     * Step 2 defines the boundary only; the `platform.businesses.*` endpoints
+     * themselves arrive with Business CRUD in Step 3.
+     *
+     * @var array<int, string>
+     */
+    public const PLATFORM_ABILITIES = [
+        'platform.businesses.view',
+        'platform.businesses.create',
+        'platform.businesses.update',
+        'platform.businesses.status',
+        'platform.businesses.delete',
+        'platform.businesses.admin.create',
+        'platform.users.view',
+        'platform.users.create',
+        'platform.users.update',
+        'platform.users.status',
+        'platform.users.roles',
+        'platform.users.delete',
+    ];
+
+    /**
      * Register any application services.
      */
     public function register(): void
@@ -28,6 +59,7 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->configureRateLimiting();
         $this->configurePermissionGates();
+        $this->configurePlatformGates();
     }
 
     /**
@@ -94,6 +126,32 @@ class AppServiceProvider extends ServiceProvider
             Gate::define(
                 $capability,
                 static fn (User $user): bool => $permissions->grants($user, $capability),
+            );
+        }
+    }
+
+    /**
+     * Define the platform-level Gate abilities ({@see PLATFORM_ABILITIES}).
+     *
+     * Deliberately separate from {@see configurePermissionGates()}: those
+     * abilities resolve through `PermissionService` (the tenant model), while
+     * these resolve through the platform *identity* alone —
+     * {@see User::isPlatformOwner()}. No database row, role or override can
+     * ever satisfy or revoke them, which is what makes platform
+     * authorisation deny-by-default and structurally incapable of leaking
+     * into tenant authorization (or vice versa).
+     *
+     * For now every ability answers the same single question — "is this
+     * caller the Platform Owner?" — because Business CRUD does not exist yet.
+     * Step 3 keeps these definitions and attaches them to the platform
+     * endpoints; it must NOT move them into `PermissionService`.
+     */
+    protected function configurePlatformGates(): void
+    {
+        foreach (self::PLATFORM_ABILITIES as $ability) {
+            Gate::define(
+                $ability,
+                static fn (User $user): bool => $user->isPlatformOwner(),
             );
         }
     }

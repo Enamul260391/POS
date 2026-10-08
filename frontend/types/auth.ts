@@ -8,8 +8,22 @@
  */
 export interface AuthUser {
   id: number;
-  /** Owning tenant. Display only — never sent back in a request. */
-  businessId: number;
+  /**
+   * Owning tenant. `null` for the Platform Owner, who belongs to no business.
+   * Display only — never sent back in a request.
+   */
+  businessId: number | null;
+  /**
+   * Platform identity marker (`UserResource.is_platform_owner`).
+   *
+   * The backend resolves `platform.*` abilities from this identity alone (the
+   * Gates in `AppServiceProvider::PLATFORM_ABILITIES` check
+   * `User::isPlatformOwner()`), and it deliberately never publishes them in
+   * `capabilities` — that list is the *tenant* permission model. The client
+   * must therefore resolve `platform.*` route requirements from this flag,
+   * not from `capabilities`, to read the same identity rule as the server.
+   */
+  isPlatformOwner: boolean;
   name: string;
   email: string;
   createdAt: string;
@@ -22,7 +36,8 @@ export interface AuthUser {
    * held through the roles. The API did that resolution, so the UI never
    * re-implements the capability-to-permission mapping and cannot disagree with
    * the Gate that enforces it — comparing against the granted list is all it
-   * takes.
+   * takes. `platform.*` abilities never appear here (see
+   * {@link AuthUser.isPlatformOwner}).
    *
    * Empty means the user may open nothing, which is a legitimate state (a role
    * with no grants yet) and is deliberately *not* treated as "unknown".
@@ -48,7 +63,10 @@ export interface LoginResponsePayload {
   token_type: string;
   user: {
     id: number;
-    business_id: number;
+    /** Owning tenant; `null` for the Platform Owner. */
+    business_id: number | null;
+    /** Platform identity marker; see {@link AuthUser.isPlatformOwner}. */
+    is_platform_owner: boolean;
     name: string;
     email: string;
     created_at: string;

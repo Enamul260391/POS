@@ -19,6 +19,7 @@ function toAuthUser(payload: MeResponsePayload): AuthUser {
   return {
     id: payload.id,
     businessId: payload.business_id,
+    isPlatformOwner: payload.is_platform_owner,
     name: payload.name,
     email: payload.email,
     createdAt: payload.created_at,

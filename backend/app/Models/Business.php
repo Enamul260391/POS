@@ -15,6 +15,9 @@ class Business extends Model
 
     public const STATUS_INACTIVE = 'inactive';
 
+    /** Statuses accepted by the platform API validation layer. */
+    public const STATUSES = [self::STATUS_ACTIVE, self::STATUS_INACTIVE];
+
     protected $fillable = [
         'name',
         'phone',

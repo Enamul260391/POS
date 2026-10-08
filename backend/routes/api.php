@@ -20,6 +20,11 @@ use App\Http\Controllers\Api\V1\SupplierController;
 use App\Http\Controllers\Api\V1\UserController;
 use App\Http\Controllers\Api\V1\UserPermissionController;
 use App\Http\Controllers\Api\V1\UserRoleController;
+use App\Support\ApiResponse;
+use Illuminate\Http\JsonResponse;
+use App\Http\Controllers\Api\V1\Platform\BusinessController;
+use App\Http\Controllers\Api\V1\Platform\BusinessUserController;
+use App\Http\Controllers\Api\V1\Platform\BusinessAdminController;
 use Illuminate\Support\Facades\Route;
 
 /**
@@ -40,6 +45,18 @@ use Illuminate\Support\Facades\Route;
  * Protected domains are wrapped in `Route::middleware('auth:sanctum')` plus
  * the `active` alias (`App\Http\Middleware\EnsureUserIsActive`), which revokes
  * the session of an account that has been suspended since it logged in.
+ *
+ * Two identity boundaries also live in this file as route-group middleware:
+ *
+ *   `business` (`App\Http\Middleware\EnsureBusinessUser`) wraps every tenant
+ *     operational group, so the Platform Owner is explicitly refused *before*
+ *     any capability check or controller runs — the boundary no longer
+ *     depends on `business_id = NULL` yielding no permissions.
+ *   `platform` (`App\Http\Middleware\EnsurePlatformOwner`) wraps the
+ *     `/platform` group, which only the Platform Owner may enter. Step 2
+ *     creates that group as a boundary foundation; Business CRUD arrives in
+ *     Step 3.
+ *
  * Phase 20 resource routes deliberately do NOT type-hint Eloquent models for
  * `{category}` / `{product}`: controllers resolve those ids through the
  * business-scoped service queries, so another tenant's record is a plain 404
@@ -74,16 +91,108 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
     });
 
     // -------------------------------------------------------------------------
+    // Platform boundary — /api/v1/platform (Step 2 foundation).
+    //
+    // The Platform Owner is a platform identity, not a tenant one: it never
+    // holds a `business_id` and is never a member of any business. This group
+    // is the single place that identity may reach, and the stack is layered
+    // exactly like the tenant groups:
+    //
+    //   1. `auth:sanctum` -> 401 for a missing/invalid token.
+    //   2. `active`       -> 401 for a suspended account, revoking its token.
+    //   3. `platform`     -> 403 for anyone who is not the Platform Owner
+    //      (`EnsurePlatformOwner`, keyed exclusively on
+    //      `User::isPlatformOwner()` — never on business_id, email or id).
+    //
+    // Business CRUD, `BusinessService` and the `platform.businesses.*`
+    // endpoints are deliberately NOT here: they belong to Step 3. The one
+    // route below exists only so the boundary itself is reachable and
+    // testable end-to-end — it exposes no data and performs no business
+    // logic, and it is the foundation this group is built on.
+    // -------------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Platform business management (Step 3).
+    //
+    // The Platform Owner manages tenants here, cross-business by design and
+    // independently from the tenant-scoped `business` groups below. Like the
+    // tenant domains these are explicit routes (not `apiResource()`) because
+    // each verb needs its *own* platform capability, and `{business}` is a raw
+    // id resolved through the service — never implicit route model binding.
+    // -------------------------------------------------------------------------
+    Route::prefix('platform')->name('platform.')->middleware(['auth:sanctum', 'active', 'platform'])->group(function () {
+        Route::get('/', static fn (): JsonResponse => ApiResponse::success(
+            ['foundation' => true],
+            'Platform boundary foundation',
+        ))->name('foundation');
+
+        // Businesses — full management (GET/POST, GET/PUT/PATCH/DELETE).
+        Route::get('/businesses', [BusinessController::class, 'index'])
+            ->middleware('can:platform.businesses.view')
+            ->name('businesses.index');
+        Route::post('/businesses', [BusinessController::class, 'store'])
+            ->middleware('can:platform.businesses.create')
+            ->name('businesses.store');
+        Route::get('/businesses/{business}', [BusinessController::class, 'show'])
+            ->middleware('can:platform.businesses.view')
+            ->name('businesses.show');
+        Route::match(['put', 'patch'], '/businesses/{business}', [BusinessController::class, 'update'])
+            ->middleware('can:platform.businesses.update')
+            ->name('businesses.update');
+        Route::patch('/businesses/{business}/status', [BusinessController::class, 'updateStatus'])
+            ->middleware('can:platform.businesses.status')
+            ->name('businesses.status');
+        Route::delete('/businesses/{business}', [BusinessController::class, 'destroy'])
+            ->middleware('can:platform.businesses.delete')
+            ->name('businesses.destroy');
+
+        // First Business Admin provisioning — one-time per business.
+        Route::post('/businesses/{business}/admin', [BusinessAdminController::class, 'store'])
+            ->middleware('can:platform.businesses.admin.create')
+            ->name('businesses.admin.store');
+
+        // Business users — full management inside the route business
+        // ({business} raw id resolved through the service; every {user} is
+        // resolved inside that business, so cross-tenant ids are 404).
+        Route::get('/businesses/{business}/users', [BusinessUserController::class, 'index'])
+            ->middleware('can:platform.users.view')
+            ->name('businesses.users.index');
+        Route::post('/businesses/{business}/users', [BusinessUserController::class, 'store'])
+            ->middleware('can:platform.users.create')
+            ->name('businesses.users.store');
+        Route::get('/businesses/{business}/users/{user}', [BusinessUserController::class, 'show'])
+            ->middleware('can:platform.users.view')
+            ->name('businesses.users.show');
+        Route::match(['put', 'patch'], '/businesses/{business}/users/{user}', [BusinessUserController::class, 'update'])
+            ->middleware('can:platform.users.update')
+            ->name('businesses.users.update');
+        Route::patch('/businesses/{business}/users/{user}/status', [BusinessUserController::class, 'updateStatus'])
+            ->middleware('can:platform.users.status')
+            ->name('businesses.users.status');
+        Route::match(['put', 'patch'], '/businesses/{business}/users/{user}/roles', [BusinessUserController::class, 'syncRoles'])
+            ->middleware('can:platform.users.roles')
+            ->name('businesses.users.roles.update');
+        Route::delete('/businesses/{business}/users/{user}', [BusinessUserController::class, 'destroy'])
+            ->middleware('can:platform.users.delete')
+            ->name('businesses.users.destroy');
+    });
+
+    // -------------------------------------------------------------------------
     // Phase 20 — products, categories and inventory (ledger) endpoints.
     // Phase 21 — customers, suppliers and purchases; purchase stock-ins flow
     // through the same ledger. Phase 23 — expenses, cash drawer, reports.
     //
-    // Every route requires a valid Sanctum token, an active account and the
-    // business capability for the action, in that order:
+    // Every route requires a valid Sanctum token, an active account, a
+    // business (non-platform) identity and the business capability for the
+    // action, in that order:
     //
     //   1. `auth:sanctum` -> 401 for a missing/invalid token.
     //   2. `active`       -> 401 for a suspended account, revoking its token.
-    //   3. `can:<cap>`    -> 403 for an authenticated user without the
+    //   3. `business`     -> 403 for the Platform Owner (and for any user
+    //      without a business_id) — `EnsureBusinessUser`, an explicit
+    //      identity boundary so the platform identity can never reach a
+    //      tenant controller, regardless of what permission resolution would
+    //      have said.
+    //   4. `can:<cap>`    -> 403 for an authenticated user without the
     //      permission. Abilities are Gates defined once in
     //      `AppServiceProvider::configurePermissionGates()` and resolved by
     //      `PermissionService`, so route middleware, controllers and
@@ -101,7 +210,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
     // parameters are therefore raw ids — implicit route model binding must
     // never be able to hand a foreign model to a controller.
     // -------------------------------------------------------------------------
-    Route::middleware(['auth:sanctum', 'active'])->group(function () {
+    Route::middleware(['auth:sanctum', 'active', 'business'])->group(function () {
         // Categories — full CRUD (GET/POST, GET/PUT/PATCH/DELETE).
         Route::get('/categories', [CategoryController::class, 'index'])
             ->middleware('can:categories.view')
@@ -383,10 +492,13 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
     // Phase 24B — roles, permissions, user-role assignment and business
     // settings.
     //
-    // Two layers of protection, in this order:
+    // Layers of protection, in this order:
     //   1. `auth:sanctum`  -> 401 for a missing/invalid token.
     //   2. `active`        -> 401 for a suspended account, revoking its token.
-    //   3. `can:<ability>` -> 403 for an authenticated user without the
+    //   3. `business`      -> 403 for the Platform Owner (and any user without
+    //      a business_id) — `EnsureBusinessUser`, so the platform identity is
+    //      refused before any tenant authorisation runs.
+    //   4. `can:<ability>` -> 403 for an authenticated user without the
     //      permission. The abilities are Gates defined once in
     //      `AppServiceProvider::configurePermissionGates()` and resolved by
     //      `PermissionService`, so route middleware, controllers and
@@ -398,7 +510,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
     // parameters are therefore raw ids — implicit route model binding must
     // never be able to hand a foreign model to a controller.
     // -------------------------------------------------------------------------
-    Route::middleware(['auth:sanctum', 'active'])->group(function () {
+    Route::middleware(['auth:sanctum', 'active', 'business'])->group(function () {
         // Roles — full CRUD, scoped to the caller's business.
         Route::get('/roles', [RoleController::class, 'index'])
             ->middleware('can:roles.view')
