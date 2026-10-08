@@ -1,4 +1,5 @@
 import { useAuthStore } from "@/stores/useAuthStore";
+import type { AuthUser } from "@/types/auth";
 
 /**
  * Capability names, exactly as `PermissionService::CAPABILITIES` declares them.
@@ -37,6 +38,11 @@ export const ROUTE_CAPABILITIES: Readonly<Record<string, Capability>> = {
   "/users": "users.view",
   "/roles": "roles.view",
   "/settings": "settings.view",
+
+  // Platform Owner routes
+  "/platform": "platform.businesses.view",
+  "/platform/dashboard": "platform.businesses.view",
+  "/platform/businesses": "platform.businesses.view",
 };
 
 /**
@@ -60,6 +66,36 @@ export function capabilityForPath(pathname: string): Capability | null {
 }
 
 /**
+ * `true` for capabilities that resolve through platform identity rather than
+ * the tenant permission model.
+ *
+ * The backend defines every `platform.*` ability as
+ * `User::isPlatformOwner()` (see `AppServiceProvider::PLATFORM_ABILITIES`) and
+ * deliberately never publishes them in the `capabilities` list — that list is
+ * the tenant permission model, which the API pins to an empty set for the
+ * Platform Owner. Checking `capabilities` for a `platform.*` name would
+ * therefore deny the very principal the route exists for, so identity is the
+ * only correct source here.
+ */
+function isPlatformCapability(capability: Capability): boolean {
+  return capability.startsWith("platform.");
+}
+
+/**
+ * Does this signed-in principal satisfy `capability`?
+ *
+ * Platform capabilities resolve through {@link AuthUser.isPlatformOwner};
+ * everything else is set membership in the API-resolved `capabilities` list.
+ */
+function userSatisfiesCapability(user: AuthUser, capability: Capability): boolean {
+  if (isPlatformCapability(capability)) {
+    return user.isPlatformOwner;
+  }
+
+  return user.capabilities.includes(capability);
+}
+
+/**
  * `true` when the signed-in user holds `capability`.
  *
  * Reads the resolved list from the session, so it is a plain set membership
@@ -70,7 +106,13 @@ export function hasCapability(capability: Capability | null): boolean {
     return true;
   }
 
-  return useAuthStore.getState().user?.capabilities.includes(capability) ?? false;
+  const user = useAuthStore.getState().user;
+
+  if (user === null) {
+    return false;
+  }
+
+  return userSatisfiesCapability(user, capability);
 }
 
 /**
@@ -92,5 +134,5 @@ export function canAccessPath(pathname: string): boolean {
     return true;
   }
 
-  return user.capabilities.includes(capability);
+  return userSatisfiesCapability(user, capability);
 }
