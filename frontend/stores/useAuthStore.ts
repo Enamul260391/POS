@@ -14,6 +14,8 @@ import {
   setToken,
 } from "@/lib/auth/token";
 import { stop as stopRealtime } from "@/lib/realtime";
+import { clearWorkState, saveWorkState } from "@/lib/pos/workState";
+import { useCartStore } from "@/stores/useCartStore";
 import { useCatalogueStore } from "@/stores/useProductStore";
 import type { ApiError } from "@/types/api";
 import type { AuthUser, LoginCredentials } from "@/types/auth";
@@ -62,6 +64,16 @@ export interface AuthStore {
   login: (credentials: LoginCredentials) => Promise<AuthUser>;
   /** Revokes the token server-side and clears local state. Never rejects. */
   logout: () => Promise<void>;
+  /**
+   * Inactivity sign-out (idle logout).
+   *
+   * Saves the recoverable work state (cart + route) for the current principal
+   * *before* clearing the session, so signing back in resumes it, then revokes
+   * the token and tears down local state exactly like an explicit logout. Unlike
+   * {@link logout} it leaves the saved work state in place and records an
+   * inactivity notice for the login screen. Never rejects.
+   */
+  idleLogout: (route: string) => Promise<void>;
   /** Re-establishes the session from the stored token. Never rejects. */
   restoreSession: () => Promise<void>;
   /** Clears the current error, e.g. when the login form is edited again. */
@@ -123,6 +135,14 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
   async logout() {
     set({ isLoading: true });
 
+    // Capture the principal before clearing: the recoverable work state is filed
+    // per user+business, so an explicit logout must discard this principal's saved
+    // cart — the user is finished with the session and must not resume it later.
+    const user = get().user;
+    if (user !== null) {
+      clearWorkState(user.id, user.businessId);
+    }
+
     // Revoke first so a still-valid token is not left usable server-side; the
     // local session is cleared regardless, because a network failure must never
     // strand the cashier in a session they asked to leave.
@@ -139,11 +159,61 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
     // keeps a signed-in channel open for a session that no longer exists, and the
     // next user of this tab would inherit the previous tenant's membership until
     // it timed out. The catalogue is cleared too, so the next account never sees
-    // the previous one's cached products.
+    // the previous one's cached products. The in-memory cart is emptied for the
+    // same reason: the next sign-in in this tab must not see this account's lines.
     stopRealtime();
     void useCatalogueStore.getState().reset();
 
+    // Flip the session to signed-out *before* emptying the cart. The live
+    // persistence subscription (`useIdleSession`) writes the work state on every
+    // cart change while the same principal is authenticated, so clearing first
+    // would fire it and re-create the record `clearWorkState` just removed (an
+    // empty cart under the old route). The sign-out order plus the subscription's
+    // own principal guard is what keeps "explicit logout discards the work state"
+    // true.
     set({ user: null, status: "unauthenticated", isLoading: false, error: null });
+    useCartStore.getState().clearCart();
+  },
+
+  async idleLogout(route) {
+    const user = get().user;
+
+    // Persist the recoverable work state *before* the token is cleared, so the
+    // same principal can resume it after signing back in. This is the whole
+    // difference from an explicit logout, which discards it.
+    if (user !== null) {
+      saveWorkState(user.id, user.businessId, route);
+    }
+
+    set({ isLoading: true });
+
+    // Revoke this tab's token server-side exactly like an explicit logout; the
+    // local session is cleared regardless of the network outcome.
+    try {
+      await logoutRequest();
+    } catch {
+      // Intentionally ignored — see `logout`.
+    }
+
+    clearSession();
+
+    stopRealtime();
+    void useCatalogueStore.getState().reset();
+
+    // Surface the reason on the login screen so the sign-out is never a mystery,
+    // and flip the session *before* emptying the cart. The persistence
+    // subscription is still attached until React re-renders, so `clearCart` here
+    // would otherwise fire it and overwrite the snapshot saved above with an
+    // empty cart — losing exactly the state this function exists to preserve.
+    // The subscription's principal guard makes that write a no-op once this `set`
+    // has landed.
+    set({
+      user: null,
+      status: "unauthenticated",
+      isLoading: false,
+      error: "You were signed out after 3 minutes of inactivity.",
+    });
+    useCartStore.getState().clearCart();
   },
 
   async restoreSession() {
@@ -209,4 +279,11 @@ onUnauthorized(() => {
     status: "unauthenticated",
     isLoading: false,
   });
+
+  // The in-memory cart is emptied only *after* the session state has flipped, so
+  // the live persistence subscription's principal guard disarms it first: this
+  // clear can never overwrite the expired session's saved snapshot. The next
+  // sign-in in this tab therefore never sees the previous account's lines, while
+  // the same account still resumes them from the work state.
+  useCartStore.getState().clearCart();
 });

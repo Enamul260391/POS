@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useCatalogueStore } from "@/stores/useProductStore";
+import { useIdleSession } from "@/features/auth/hooks/useIdleSession";
 
 /** Where an unauthenticated visitor is sent. */
 const LOGIN_ROUTE = "/login";
@@ -42,6 +43,11 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const businessId = useAuthStore((state) => state.user?.businessId ?? null);
   const restoreSession = useAuthStore((state) => state.restoreSession);
   const startRealtimeSync = useCatalogueStore((state) => state.startRealtimeSync);
+
+  // Per-tab idle logout + live work-state persistence. Keyed on the authenticated
+  // user inside the hook, so it is inert until a session exists and is torn down
+  // on sign-out — exactly one timer/subscription per tab, never duplicated.
+  useIdleSession();
 
   useEffect(() => {
     // Only worth asking the API when a token exists; `restoreSession` short

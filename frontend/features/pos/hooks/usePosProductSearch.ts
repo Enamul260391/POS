@@ -50,10 +50,7 @@ export interface PosProductSearch {
  * is refused by a monotonic `runIdRef`. So "Jon" resolving after "Jonshen" can
  * never overwrite the newer result. Nothing is re-implemented here.
  */
-export function usePosProductSearch(
-  query: string,
-  categoryId: number | null,
-): PosProductSearch {
+export function usePosProductSearch(query: string): PosProductSearch {
   const [term, setTerm] = useState("");
 
   // The debounced term. Runs on mount too (with `""`), which is harmless: an
@@ -64,11 +61,11 @@ export function usePosProductSearch(
   }, [query]);
 
   const load = useCallback(
-    (signal: AbortSignal) => searchSellableProducts(term, { categoryId }, { signal }),
-    [term, categoryId],
+    (signal: AbortSignal) => searchSellableProducts(term, undefined, { signal }),
+    [term],
   );
 
-  const { data, isLoading, error } = useApiResource(load, [term, categoryId], {
+  const { data, isLoading, error } = useApiResource(load, [term], {
     enabled: term !== "",
   });
 

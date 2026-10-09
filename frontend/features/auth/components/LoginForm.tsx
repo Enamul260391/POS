@@ -16,6 +16,7 @@ import {
   type LoginFormValues,
 } from "@/features/auth/lib/loginSchema";
 import { env } from "@/lib/env";
+import { readWorkState, restoreWorkState } from "@/lib/pos/workState";
 import {
   BUSINESS_LANDING_ROUTE,
   PLATFORM_LANDING_ROUTE,
@@ -86,21 +87,32 @@ export function LoginForm() {
   async function onSubmit(values: LoginFormValues) {
     try {
       const user = await login({ email: values.email.trim(), password: values.password });
-      // `AuthGate` passes the originally requested route as `?next=`. It is
-      // attacker-controllable, so only a same-origin, single-slash internal path
-      // is ever honoured — a crafted `//host` or external link is discarded.
-      // `user.isPlatformOwner` is the trusted server-resolved identity, so the
-      // redirect honours it over `?next=`. A Platform Owner is only ever sent to
-      // a valid platform route (`/platform/...`); any business destination from
-      // `next` is ignored in favour of `/platform`. A business user keeps the
-      // existing `next` behaviour but is never routed into the platform shell —
-      // `/platform` in `next` falls back to the default business destination,
-      // leaving access control to `AuthGate` + `PermissionGate`. The safe-path
-      // rules live in `@/features/auth/lib/routing`, shared with the root entry
-      // redirect, so both read the same account-type decision.
+
+      // Recover this principal's saved work state (cart + last working page) from
+      // an idle sign-out. The record is only read back for the exact user+business
+      // that just signed in, so no other account's or tenant's cart can leak in.
+      // The cart is revalidated against the current catalogue on restore.
+      const workState = readWorkState(user.id, user.businessId);
+      if (workState !== null) {
+        restoreWorkState(workState);
+      }
+
+      // `AuthGate` passes the originally requested route as `?next=`, and an idle
+      // sign-out saved the last working page. `?next=` and the saved route are both
+      // attacker/stale-controllable, so only a same-origin, single-slash internal
+      // path is ever honoured, and only when it belongs to the side of the app the
+      // principal may be on. `user.isPlatformOwner` is the trusted server-resolved
+      // identity, so the redirect honours it. The safe-path rules live in
+      // `@/features/auth/lib/routing`, shared with the root entry redirect.
+      //
+      // Precedence: a saved working route (validated) wins over `?next=`, so the
+      // cashier resumes exactly where they left off; a saved route that is no
+      // longer valid/authorized is discarded and the normal landing applies.
+      const savedRoute = workState?.route ?? null;
+      const requested = savedRoute ?? searchParams.get("next");
       const destination = user.isPlatformOwner
-        ? (platformRedirectTarget(searchParams.get("next")) ?? PLATFORM_LANDING_ROUTE)
-        : (businessRedirectTarget(searchParams.get("next")) ?? BUSINESS_LANDING_ROUTE);
+        ? (platformRedirectTarget(requested) ?? PLATFORM_LANDING_ROUTE)
+        : (businessRedirectTarget(requested) ?? BUSINESS_LANDING_ROUTE);
       // `replace` rather than `push`: the login route must not stay in history,
       // otherwise Back would return to a page the user may no longer see.
       router.replace(destination);

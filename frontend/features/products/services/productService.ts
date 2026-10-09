@@ -153,8 +153,9 @@ export async function listAllProducts(
  * this returns a single page rather than paging through every match — a broad
  * term must not be able to turn into a full-catalogue download.
  *
- * `category_id` is passed straight through, so selecting a category tab narrows
- * the search in SQL too instead of filtering the returned page locally.
+ * `category_id` is passed straight through, so a caller-provided category
+ * narrows the search in SQL too instead of filtering the returned page
+ * locally.
  *
  * An empty term resolves to no request at all and no rows.
  */

@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { readWorkState, saveWorkState } from "@/lib/pos/workState";
 import { useAuthStore } from "@/stores/useAuthStore";
+import { useCartStore } from "@/stores/useCartStore";
 import type { AuthUser } from "@/types/auth";
+import type { Product } from "@/types/product";
 
 /**
  * Store-level, tab-isolation regression tests.
@@ -91,6 +94,7 @@ beforeEach(() => {
   loginRequest.mockReset();
   logoutRequest.mockReset().mockResolvedValue(undefined);
   fetchCurrentUser.mockReset();
+  useCartStore.getState().clearCart();
   useAuthStore.setState({ user: null, status: "unknown", isLoading: false, error: null, fieldErrors: {} });
 });
 
@@ -158,6 +162,60 @@ describe("useAuthStore tab isolation", () => {
   });
 });
 
+describe("work-state recovery across sign-out", () => {
+  function makeProduct(id: number, name: string): Product {
+    return {
+      id,
+      name,
+      sku: `SKU-${id}`,
+      barcode: null,
+      unit: "piece",
+      costPrice: 5,
+      sellingPrice: 10,
+      image: null,
+      status: "active",
+      categoryId: null,
+      categoryName: null,
+      description: null,
+      stock: 100,
+      lowStockThreshold: 5,
+      taxRate: 0,
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+    };
+  }
+
+  it("idleLogout keeps a restorable snapshot and shows the inactivity notice", async () => {
+    loginRequest.mockResolvedValueOnce({ user: businessUser, token: "token-cashier" });
+    await useAuthStore.getState().login({ email: "cashier@example.test", password: "secret" });
+    useCartStore.getState().addProduct(makeProduct(7, "Rice"));
+
+    await useAuthStore.getState().idleLogout("/pos");
+
+    const saved = readWorkState(2, 9);
+    expect(saved).not.toBeNull();
+    expect(saved?.items).toHaveLength(1);
+    expect(saved?.route).toBe("/pos");
+    expect(useAuthStore.getState().status).toBe("unauthenticated");
+    expect(useAuthStore.getState().error).toContain("inactivity");
+    // The tab's credential and the in-memory cart are both gone.
+    expect(window.sessionStorage.getItem("pos.auth.token")).toBeNull();
+    expect(useCartStore.getState().items).toHaveLength(0);
+  });
+
+  it("explicit logout discards any saved work state", async () => {
+    loginRequest.mockResolvedValueOnce({ user: businessUser, token: "token-cashier" });
+    await useAuthStore.getState().login({ email: "cashier@example.test", password: "secret" });
+    useCartStore.getState().addProduct(makeProduct(7, "Rice"));
+    saveWorkState(2, 9, "/pos");
+
+    await useAuthStore.getState().logout();
+
+    expect(readWorkState(2, 9)).toBeNull();
+    expect(useCartStore.getState().items).toHaveLength(0);
+    expect(useAuthStore.getState().error).toBeNull();
+  });
+});
 
 afterEach(() => {
   vi.restoreAllMocks();

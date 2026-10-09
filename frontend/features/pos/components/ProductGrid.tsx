@@ -7,7 +7,7 @@ import { ProductCard } from "@/features/pos/components/ProductCard";
 import type { Product } from "@/types/product";
 
 interface ProductGridProps {
-  /** Products after search + category filtering. */
+  /** Products matching the current search. */
   products: readonly Product[];
   /** Adds a tapped product to the cart (guard lives in `addProductToSale`). */
   onAdd: (product: Product) => void;
@@ -21,8 +21,7 @@ interface ProductGridProps {
  * Memoised on purpose: the grid itself never subscribes to the cart, so cart
  * updates cannot re-render it — each `ProductCard` subscribes to its own
  * quantity instead and updates independently. Re-renders happen only when the
- * filtered result array actually changes (search, category, or a rare
- * catalogue reload).
+ * filtered result array actually changes (search or a rare catalogue reload).
  */
 export const ProductGrid = memo(function ProductGrid({
   products,
@@ -48,7 +47,7 @@ export const ProductGrid = memo(function ProductGrid({
         <ShoppingBasket className="size-8 text-muted-foreground" aria-hidden="true" />
         <p className="text-sm font-medium">No products found</p>
         <p className="text-xs text-muted-foreground">
-          Try a different name, SKU, barcode or category.
+          Try a different name, SKU or barcode.
         </p>
       </div>
     );

@@ -1,7 +1,6 @@
 import { useCartStore, type CartActionFailure } from "@/stores/useCartStore";
 import { useCatalogueStore } from "@/stores/useProductStore";
 import type { CartItem } from "@/types/cart";
-import type { Category } from "@/types/category";
 import type { Product } from "@/types/product";
 
 import { findProductByCode } from "../../products/services/productService";
@@ -22,24 +21,9 @@ import { findProductByCode } from "../../products/services/productService";
  * must not read mock data. `findProductByCode` was replaced by the API lookup in
  * `addScannedBarcode`, which asks the backend for an exact barcode/SKU match
  * instead of scanning an in-memory array.
- *
- * The API's `categories` table is flat (no `parent_id`), so a category filter
- * is an exact `category_id` match, applied by the backend.
  */
 
 const normalize = (value: string): string => value.trim().toLowerCase();
-
-/**
- * Active categories, the tabs rendered above the product grid.
- *
- * The list comes from the catalogue store and is read without triggering a
- * load: the POS never fetches `/categories` for its own sake, because the tabs
- * are only reachable once a search has run. The API's categories are a flat
- * list, so every tab is a direct `category_id` filter with no descendants.
- */
-export function posTabCategories(categories: readonly Category[]): readonly Category[] {
-  return categories.filter((category) => category.status === "active");
-}
 
 /**
  * Only active products may enter a sale.

@@ -3,25 +3,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { CartPanel } from "@/features/pos/components/CartPanel";
-import { CategoryTabs } from "@/features/pos/components/CategoryTabs";
 import { PaymentModal } from "@/features/pos/components/PaymentModal";
 import { ProductGrid } from "@/features/pos/components/ProductGrid";
 import { ProductSearch } from "@/features/pos/components/ProductSearch";
 import { usePosProductSearch } from "@/features/pos/hooks/usePosProductSearch";
-import { addProductToSale, posTabCategories, sellableProductsOf } from "@/features/pos/lib/catalog";
-import { selectCategories, useCatalogueStore } from "@/stores/useProductStore";
+import { addProductToSale, sellableProductsOf } from "@/features/pos/lib/catalog";
 import type { Product } from "@/types/product";
 
 /**
  * The POS terminal — composition only (Phase 3, Phase 25).
  *
- * Owns the search state (query, category tab) and the payment modal flag; the
- * cart itself lives in the Phase 3 store and totals are derived from it.
- * Deliberate re-render boundaries:
+ * Owns the search state (query) and the payment modal flag; the cart itself
+ * lives in the Phase 3 store and totals are derived from it. Deliberate
+ * re-render boundaries:
  *
  * - This component never subscribes to the cart (handlers read
  *   `useCartStore.getState()` inside the helpers), so cart updates do not
- *   re-render the search box, tabs or grid.
+ *   re-render the search box or grid.
  * - `ProductGrid` is memoised and holds no subscription; each `ProductCard`
  *   subscribes to its own quantity and updates alone.
  * - `CartPanel` subscribes to the cart only, so typing in the search box does
@@ -42,23 +40,20 @@ import type { Product } from "@/types/product";
  * already filters `status=active` — the POS must never sell an inactive row
  * even if that contract ever changed.
  *
- * Categories are read from the catalogue store **without triggering a load**:
- * a `GET /categories` here would exist only to populate tabs that are hidden
- * until a search happens. If another screen (Products, Purchases) has already
- * loaded them they are shown; otherwise the tab bar simply stays empty and the
- * search still works. No POS feature requires categories independently of the
- * product result.
+ * No category tabs, ever. The result area deliberately has no category filter:
+ * the terminal holds no catalogue of its own, so a tab bar could only ever be
+ * filled from categories cached by another screen (`/products`, `/inventory`
+ * and `/purchases` hydrate the shared catalogue store) — which made the tabs
+ * pop in and out depending on navigation history. The cashier narrows results
+ * through the search box and the barcode field, both of which ask the backend
+ * to match.
  */
 export function PosTerminal() {
   const [query, setQuery] = useState("");
-  const [categoryId, setCategoryId] = useState<number | null>(null);
   const [isPaymentOpen, setIsPaymentOpen] = useState(false);
 
-  // Read-only subscription: selecting the categories must never cause a load.
-  const allCategories = useCatalogueStore(selectCategories);
-
   // Server-side search. Empty query → no request and no products.
-  const { products, isSearching, error, term } = usePosProductSearch(query, categoryId);
+  const { products, isSearching, error, term } = usePosProductSearch(query);
 
   const searchRef = useRef<HTMLInputElement>(null);
   const barcodeRef = useRef<HTMLInputElement>(null);
@@ -67,15 +62,11 @@ export function PosTerminal() {
     () => sellableProductsOf(products),
     [products],
   );
-  const tabs = useMemo(
-    () => posTabCategories(allCategories),
-    [allCategories],
-  );
 
   // Results are search-driven: an empty query renders no product result area at
-  // all (no cards, no category tabs). `filterByCategory` is deliberately gone —
-  // the category filter is applied by the backend (`category_id`), not in the
-  // browser, so the terminal never needs the rows a filter would exclude.
+  // all (no cards). There is no `filterByCategory` and no category tab state:
+  // the search is a plain term sent to the backend, so no shared or stale
+  // category selection can ever influence what the terminal shows.
   const hasQuery = term !== "";
   const firstResult = hasQuery ? (sellableProducts[0] ?? null) : null;
 
@@ -114,9 +105,6 @@ export function PosTerminal() {
           searchRef={searchRef}
           barcodeRef={barcodeRef}
         />
-        {hasQuery && tabs.length > 0 && (
-          <CategoryTabs categories={tabs} value={categoryId} onChange={setCategoryId} />
-        )}
         {error !== null && (
           <p role="alert" className="text-xs text-destructive">
             {error}
