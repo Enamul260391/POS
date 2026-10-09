@@ -12,7 +12,7 @@ const LOGIN_ROUTE = "/login";
 /**
  * Restores the session and gates the dashboard shell on it.
  *
- * Why this is a client component: the session lives in `localStorage` and the
+ * Why this is a client component: the session lives in `sessionStorage` and the
  * API is bearer-authenticated, so the server has no way to know who is asking.
  * Every authenticated screen therefore renders behind this gate.
  *

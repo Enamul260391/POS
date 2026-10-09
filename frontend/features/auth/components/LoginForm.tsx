@@ -16,10 +16,13 @@ import {
   type LoginFormValues,
 } from "@/features/auth/lib/loginSchema";
 import { env } from "@/lib/env";
+import {
+  BUSINESS_LANDING_ROUTE,
+  PLATFORM_LANDING_ROUTE,
+  businessRedirectTarget,
+  platformRedirectTarget,
+} from "@/features/auth/lib/routing";
 import { useAuthStore } from "@/stores/useAuthStore";
-
-/** Where a tenant user lands after signing in. */
-const DEFAULT_REDIRECT = "/pos";
 
 /** Inline validation or server message rendered under a field. */
 function FormError({ message }: { message?: string }) {
@@ -83,16 +86,21 @@ export function LoginForm() {
   async function onSubmit(values: LoginFormValues) {
     try {
       const user = await login({ email: values.email.trim(), password: values.password });
-      // `AuthGate` passes the originally requested route as `?next=`; the
-      // fallback is the till. Only same-origin, absolute paths are honoured, so
-      // a crafted link cannot bounce the user off-site after signing in.
-      const next = searchParams.get("next");
-      const destination =
-        next !== null && next.startsWith("/") && !next.startsWith("//")
-          ? next
-          : user.isPlatformOwner
-          ? "/platform"
-          : DEFAULT_REDIRECT;
+      // `AuthGate` passes the originally requested route as `?next=`. It is
+      // attacker-controllable, so only a same-origin, single-slash internal path
+      // is ever honoured — a crafted `//host` or external link is discarded.
+      // `user.isPlatformOwner` is the trusted server-resolved identity, so the
+      // redirect honours it over `?next=`. A Platform Owner is only ever sent to
+      // a valid platform route (`/platform/...`); any business destination from
+      // `next` is ignored in favour of `/platform`. A business user keeps the
+      // existing `next` behaviour but is never routed into the platform shell —
+      // `/platform` in `next` falls back to the default business destination,
+      // leaving access control to `AuthGate` + `PermissionGate`. The safe-path
+      // rules live in `@/features/auth/lib/routing`, shared with the root entry
+      // redirect, so both read the same account-type decision.
+      const destination = user.isPlatformOwner
+        ? (platformRedirectTarget(searchParams.get("next")) ?? PLATFORM_LANDING_ROUTE)
+        : (businessRedirectTarget(searchParams.get("next")) ?? BUSINESS_LANDING_ROUTE);
       // `replace` rather than `push`: the login route must not stay in history,
       // otherwise Back would return to a page the user may no longer see.
       router.replace(destination);

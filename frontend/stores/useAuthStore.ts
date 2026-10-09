@@ -147,6 +147,14 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
   },
 
   async restoreSession() {
+    // Idempotent: once a session has been resolved in this tab there is nothing
+    // left to restore, and re-running would fire a duplicate `/auth/me`. This
+    // matters because the root entry point restores the session and then
+    // redirects into a guarded shell (`AuthGate`) that restores it again.
+    if (get().status === "authenticated") {
+      return;
+    }
+
     if (getToken() === null) {
       set({ user: null, status: "unauthenticated", isLoading: false });
       return;

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
+
+import { RootRedirect } from "@/features/auth/components/RootRedirect";
 
 export const metadata: Metadata = {
   title: "POS",
@@ -9,11 +10,15 @@ export const metadata: Metadata = {
 /**
  * `/` — entry point.
  *
- * The application has no public landing page: an unauthenticated visitor is
- * sent to the login form by `AuthGate`, and an authenticated one goes straight
- * to the till. Redirecting here keeps the root from rendering a page that
- * would only ever bounce.
+ * The session is a bearer token in `sessionStorage` with no server-side auth
+ * middleware, so the account type is only knowable on the client after the
+ * session is restored. A server-side `redirect("/pos")` would therefore drop
+ * every visitor — including the Platform Owner — into the Business User
+ * dashboard. `RootRedirect` resolves the authenticated account type first and
+ * then sends a Platform Owner to `/platform` and a Business User to `/pos`;
+ * an unauthenticated visitor continues on to `/login`.
  */
 export default function Home() {
-  redirect("/pos");
+  return <RootRedirect />;
 }
+

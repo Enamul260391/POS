@@ -4,10 +4,22 @@
  * The backend authenticates with `Authorization: Bearer <token>` only
  * (`bootstrap/app.php` deliberately does not enable Sanctum's SPA cookie
  * middleware), so the token has to live somewhere the Axios request
- * interceptor can read it. It is kept in `localStorage` — the one storage
- * option that survives a page reload, which is what "restore session" needs.
+ * interceptor can read it.
  *
- * Nothing else in the application may call `localStorage` for the token: the
+ * It is kept in **`sessionStorage`, not `localStorage`**, and that is the
+ * single most important decision in this module. `localStorage` is shared by
+ * every tab of the same origin, so a token stored there is a *single* shared
+ * credential: logging in as a different account in a second tab overwrites the
+ * first tab's token, its in-flight requests start carrying the wrong bearer,
+ * and a logout in either tab wipes the credential the other tab still relies
+ * on. `sessionStorage` is scoped to the individual tab (browsing context) and,
+ * crucially, survives a reload of that same tab — which is exactly what
+ * "restore session" needs while still giving each tab its own independent
+ * identity. Two tabs can therefore hold two different accounts (a Platform
+ * Owner and a Business User, or two different Business Users) at the same time
+ * without ever seeing each other's credentials.
+ *
+ * Nothing else in the application may call `sessionStorage` for the token: the
  * key, the JSON shape and the null-handling live here so there is exactly one
  * place to change if the storage strategy ever does.
  *
@@ -21,9 +33,9 @@ const STORAGE_KEY = "pos.auth.token";
 /** The authenticated user snapshot cached next to the token. */
 const USER_KEY = "pos.auth.user";
 
-/** `true` when a browser storage API is reachable (never during SSR). */
+/** `true` when the tab-scoped storage API is reachable (never during SSR). */
 function canUseStorage(): boolean {
-  return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
+  return typeof window !== "undefined" && typeof window.sessionStorage !== "undefined";
 }
 
 /** Reads and parses a stored JSON value; unreadable data is treated as absent. */
@@ -32,7 +44,7 @@ function readJson<T>(key: string): T | null {
     return null;
   }
   try {
-    const raw = window.localStorage.getItem(key);
+    const raw = window.sessionStorage.getItem(key);
     return raw === null ? null : (JSON.parse(raw) as T);
   } catch {
     // A corrupted entry must never break the app: it is treated as absent and
@@ -47,7 +59,7 @@ function writeJson(key: string, value: unknown): void {
     return;
   }
   try {
-    window.localStorage.setItem(key, JSON.stringify(value));
+    window.sessionStorage.setItem(key, JSON.stringify(value));
   } catch {
     // Storage unavailable (private mode, quota): the session simply does not
     // survive a reload, which is not worth failing the request for.
@@ -60,7 +72,7 @@ function removeKey(key: string): void {
     return;
   }
   try {
-    window.localStorage.removeItem(key);
+    window.sessionStorage.removeItem(key);
   } catch {
     // Nothing to do — see `writeJson`.
   }
