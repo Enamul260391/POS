@@ -309,7 +309,7 @@ This project therefore uses:
 Verify after building — the wrong URL is otherwise invisible:
 
 ```bash
-grep -r "localhost:8000" .next/static/chunks/   # must print nothing
+grep -r "localhost:8001" .next/static/chunks/   # must print nothing
 ```
 
 ### Reverse proxy / `TRUSTED_PROXIES`
@@ -846,7 +846,7 @@ Verified during this phase:
 * `npm run build` succeeds (exit 0) with no TypeScript errors.
 * **No source maps are emitted** (0 `.map` files in the build output).
 * The current `.env.local` is development-only, so a local build contains
-  `http://localhost:8000/api/v1`. This is expected — the production build must be
+  `http://localhost:8001/api/v1`. This is expected — the production build must be
   produced with the production `NEXT_PUBLIC_API_BASE_URL` set.
 
 Deployment: run the Node server under a process supervisor (systemd, or pm2) and

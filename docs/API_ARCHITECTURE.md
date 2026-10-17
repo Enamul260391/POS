@@ -13,7 +13,7 @@ Frontend: Next.js App Router (separate application, integrated in a later phase)
 
 | Environment | Base URL |
 | ----------- | -------- |
-| Local | `http://localhost:8000/api/v1` |
+| Local | `http://localhost:8001/api/v1` |
 | Production | `https://<host>/api/v1` |
 
 * Every endpoint lives under `/api/v1` — the version is part of the URL prefix, so a

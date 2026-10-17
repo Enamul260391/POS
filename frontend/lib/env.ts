@@ -10,7 +10,7 @@
  */
 
 /** Used when `NEXT_PUBLIC_API_URL` is missing (local Laravel development). */
-const DEFAULT_API_URL = "http://localhost:8000/api/v1";
+const DEFAULT_API_URL = "http://localhost:8001/api/v1";
 
 /** Used when `NEXT_PUBLIC_APP_NAME` is missing. */
 const DEFAULT_APP_NAME = "POS";

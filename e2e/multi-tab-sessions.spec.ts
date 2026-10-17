@@ -9,7 +9,7 @@
  *
  * How to run (requires Playwright and both servers up):
  *
- *   # 1. Backend (Laravel) on :8000 and seed two accounts:
+ *   # 1. Backend (Laravel) on :8001 and seed two accounts:
  *   #    - a Platform Owner   (platform_role = 'owner', no business_id)
  *   #    - a Business User    (business_id set, POS capabilities)
  *   #    Pass their credentials via env (see the config block below).
@@ -46,7 +46,7 @@ const BUSINESS_B = {
 };
 
 const APP = process.env.E2E_APP_URL ?? "http://localhost:3000";
-const API = process.env.E2E_API_URL ?? "http://localhost:8000/api/v1";
+const API = process.env.E2E_API_URL ?? "http://localhost:8001/api/v1";
 
 /** Signs the given page in and returns once the app has routed to a shell. */
 async function signIn(page: Page, creds: { email: string; password: string }): Promise<void> {

@@ -10,7 +10,7 @@ build. It is a standalone artefact you run when you want end-to-end proof.
 
 ## Prerequisites
 
-1. Backend (Laravel) running on `http://localhost:8000`, with two seeded
+1. Backend (Laravel) running on `http://localhost:8001`, with two seeded
    accounts:
    - a **Platform Owner** (`platform_role = 'owner'`, no `business_id`)
    - a **Business User** (`business_id` set, POS capabilities)
