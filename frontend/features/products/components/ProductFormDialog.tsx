@@ -430,6 +430,21 @@ export function ProductFormDialog({ target, onOpenChange }: ProductFormDialogPro
               placeholder="Select unit"
               error={errors.unit?.message}
             />
+            <SelectField
+              name="status"
+              label="Status"
+              control={control}
+              options={STATUS_OPTIONS}
+              placeholder="Select status"
+              error={errors.status?.message}
+            />
+            <NumberField
+              name="lowStockThreshold"
+              label="Low stock threshold"
+              register={register}
+              error={errors.lowStockThreshold?.message}
+              hint="Alert when stock falls to or below this level."
+            />
             <NumberField
               name="costPrice"
               label="Cost price"
@@ -453,21 +468,6 @@ export function ProductFormDialog({ target, onOpenChange }: ProductFormDialogPro
                   ? "Managed in Inventory — adjustments record stock movements."
                   : undefined
               }
-            />
-            <NumberField
-              name="lowStockThreshold"
-              label="Low stock threshold"
-              register={register}
-              error={errors.lowStockThreshold?.message}
-              hint="Alert when stock falls to or below this level."
-            />
-            <SelectField
-              name="status"
-              label="Status"
-              control={control}
-              options={STATUS_OPTIONS}
-              placeholder="Select status"
-              error={errors.status?.message}
             />
 
             <div className="grid gap-1.5 sm:col-span-2">

@@ -32,6 +32,30 @@ export function toMoney(value: string | number | null | undefined): number {
   return Math.round(parsed * 100) / 100;
 }
 
+/**
+ * Parses an optional decimal into a number, preserving absence as `null`.
+ *
+ * Unlike `toMoney` (which maps missing to `0` for totals that must always
+ * render), an absent MRP / selling price must stay `null` so historic rows
+ * and untouched fields never read as a free `0` price or `NaN` in a total.
+ */
+export function toNullableMoney(
+  value: string | number | null | undefined,
+): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const text = typeof value === "number" ? String(value) : value.trim();
+  if (text === "") {
+    return null;
+  }
+  const parsed = Number(text);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  return Math.round(parsed * 100) / 100;
+}
+
 /** Parses a ledger quantity into a number, rounding to four decimals. */
 export function toQuantity(value: string | number | null | undefined): number {
   if (value === null || value === undefined) {

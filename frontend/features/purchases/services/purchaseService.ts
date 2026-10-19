@@ -15,9 +15,12 @@ import type { Purchase, PurchasePayload } from "@/types/purchase";
  * `POST /purchases`' single server transaction:
  *
  *   the client sends *inputs* — supplier, lines (product, quantity, cost,
- *   discount), the invoice-level tax amount and the amount paid — and the API
+ *   discount, purchase-specific MRP / selling price / selling code), the
+ *   invoice-level tax amount and the amount paid — and the API
  *   recomputes the subtotal, grand total, due amount and payment status,
  *   writes the purchase rows and appends one stock-in movement per line.
+ *   The resale fields are stored per purchase item and never affect totals
+ *   or the ledger.
  *
  * The dialog still previews totals with the shared `calculatePurchaseTotals`,
  * and this service reuses that same calculation to translate the previewed
@@ -37,6 +40,24 @@ export interface CreatePurchaseLineInput {
   unitCost: number;
   /** Absolute line discount (BDT), clamped to the line by the totals. */
   discount: number;
+  /**
+   * Maximum retail price for this purchase line (BDT).
+   * Optional and purchase-specific — never read from the global product, and
+   * never part of purchase totals. `NaN`/`null`/`undefined` means absent.
+   */
+  mrp?: number | null;
+  /**
+   * Intended selling price for this purchase line (BDT).
+   * Optional and purchase-specific — never read from the global product, and
+   * never part of purchase totals. `NaN`/`null`/`undefined` means absent.
+   */
+  sellingPrice?: number | null;
+  /**
+   * Selling identifier for this purchase line.
+   * Optional and purchase-specific — never read from the global product.
+   * Blank means absent.
+   */
+  sellingCode?: string | null;
 }
 
 /** Everything an order needs, as the dialog collects it. */
@@ -107,6 +128,34 @@ function messageOf(error: unknown, fallback: string): string {
 }
 
 /**
+ * Normalises an optional money input for the API payload.
+ *
+ * `NaN` (empty numeric input), `null` and `undefined` all mean "absent" and
+ * are sent as `null` so the backend stores `NULL`; any finite number is
+ * rounded to two decimals, mirroring the API's `decimal:0,2` rule.
+ */
+function toOptionalMoney(value: number | null | undefined): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+  return Math.round(value * 100) / 100;
+}
+
+/**
+ * Normalises an optional selling code for the API payload.
+ *
+ * Trims whitespace and maps blank / missing values to `null`, following the
+ * backend convention for optional identifiers.
+ */
+function toOptionalCode(value: string | null | undefined): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed === "" ? null : trimmed;
+}
+
+/**
  * `POST /purchases` — records the order; the API receives the stock.
  *
  * The response is the authoritative document: totals, payment status and
@@ -140,6 +189,9 @@ export async function createPurchase(
         quantity: line.quantity,
         unit_cost: line.unitCost,
         discount: line.discount,
+        mrp: toOptionalMoney(line.mrp),
+        selling_price: toOptionalMoney(line.sellingPrice),
+        selling_code: toOptionalCode(line.sellingCode),
       })),
     });
 

@@ -44,6 +44,26 @@ export interface PurchaseItem {
   unitCost: number;
   /** Absolute line discount in currency units. */
   discount: number;
+  /**
+   * Maximum retail price for this purchase line (BDT).
+   * Purchase-specific value stored on the item itself — never prefetched
+   * from the global product — and never part of purchase totals.
+   * `null` when absent (historic rows).
+   */
+  mrp: number | null;
+  /**
+   * Intended selling price for this purchase line (BDT).
+   * Purchase-specific value stored on the item itself — never prefetched
+   * from the global product — and never part of purchase totals.
+   * `null` when absent (historic rows).
+   */
+  sellingPrice: number | null;
+  /**
+   * Selling identifier for this purchase line.
+   * Purchase-specific value stored on the item itself — never prefetched
+   * from the global product. `null` when absent (historic rows).
+   */
+  sellingCode: string | null;
   /** Final line amount: `quantity * unitCost - discount`. */
   lineTotal: number;
 }
@@ -100,6 +120,9 @@ export interface PurchaseItemPayload {
   quantity: string | number;
   unit_cost: string;
   discount: string;
+  mrp: string | number | null;
+  selling_price: string | number | null;
+  selling_code: string | null;
   tax: string;
   total: string;
   product?: {

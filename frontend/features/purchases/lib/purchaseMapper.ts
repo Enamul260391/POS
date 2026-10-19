@@ -1,4 +1,4 @@
-import { toMoney, toQuantity, toText } from "@/lib/api/values";
+import { toMoney, toNullableMoney, toQuantity, toText } from "@/lib/api/values";
 import { toProductUnit } from "@/features/products/lib/productMapper";
 import type {
   Purchase,
@@ -48,6 +48,13 @@ export function toPurchaseItem(payload: PurchaseItemPayload): PurchaseItem {
     quantity: toQuantity(payload.quantity),
     unitCost: toMoney(payload.unit_cost),
     discount: toMoney(payload.discount),
+    // Historic rows (and untouched new rows) omit these as `null` — they must
+    // read as absent (`null`), never `0` or `NaN`, and never shift totals.
+    mrp: toNullableMoney(payload.mrp),
+    sellingPrice: toNullableMoney(payload.selling_price),
+    sellingCode: toText(
+      typeof payload.selling_code === "string" ? payload.selling_code : null,
+    ),
     lineTotal: toMoney(payload.total),
   };
 }

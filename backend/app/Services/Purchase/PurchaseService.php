@@ -203,6 +203,9 @@ final class PurchaseService
                     'quantity' => $line['quantity'],
                     'unit_cost' => $line['unit_cost'],
                     'discount' => $line['discount'],
+                    'mrp' => $line['mrp'],
+                    'selling_price' => $line['selling_price'],
+                    'selling_code' => $line['selling_code'],
                     'tax' => $line['tax'],
                     'total' => $line['total'],
                 ]);
@@ -345,6 +348,9 @@ final class PurchaseService
                 Quantity::format($item->quantity),
                 $item->unit_cost,
                 $item->discount,
+                $item->mrp,
+                $item->selling_price,
+                $item->selling_code,
                 $item->tax,
                 $item->total,
             ))
@@ -370,6 +376,9 @@ final class PurchaseService
                 $quantity,
                 $unitCost,
                 $discount,
+                $line['mrp'] ?? null,
+                $line['selling_price'] ?? null,
+                $line['selling_code'] ?? null,
                 $tax,
                 $total,
             );
@@ -382,12 +391,24 @@ final class PurchaseService
 
     /**
      * Canonical, scale-normalised representation of one purchase line.
+     *
+     * MRP, selling price and selling code participate in the signature so a
+     * change to any of them on a finalized purchase is a structural change.
+     * Stored `NULL` values and omitted incoming values both normalise to the
+     * same empty marker, so historic rows stay idempotent.
+     *
+     * @param  mixed  $mrp
+     * @param  mixed  $sellingPrice
+     * @param  mixed  $sellingCode
      */
     private function itemSignature(
         int $productId,
         string $quantity,
         string $unitCost,
         string $discount,
+        mixed $mrp,
+        mixed $sellingPrice,
+        mixed $sellingCode,
         string $tax,
         string $total,
     ): string {
@@ -396,9 +417,48 @@ final class PurchaseService
             Quantity::format($quantity),
             Money::format($unitCost),
             Money::format($discount),
+            $this->optionalMoneySignature($mrp),
+            $this->optionalMoneySignature($sellingPrice),
+            $this->optionalCodeSignature($sellingCode),
             Money::format($tax),
             Money::format($total),
         ]);
+    }
+
+    /**
+     * Normalise an optional money value for signatures: `null` (or blank)
+     * maps to an empty marker, otherwise a two-decimal string.
+     *
+     * @param  mixed  $value
+     */
+    private function optionalMoneySignature(mixed $value): string
+    {
+        if ($value === null) {
+            return '';
+        }
+
+        if (is_string($value) && trim($value) === '') {
+            return '';
+        }
+
+        return Money::format($value);
+    }
+
+    /**
+     * Normalise an optional selling code for signatures: `null` (or blank,
+     * after trimming) maps to an empty marker.
+     *
+     * @param  mixed  $value
+     */
+    private function optionalCodeSignature(mixed $value): string
+    {
+        if (! is_string($value)) {
+            return '';
+        }
+
+        $trimmed = trim($value);
+
+        return $trimmed === '' ? '' : $trimmed;
     }
 
     /**
@@ -459,7 +519,7 @@ final class PurchaseService
      * fixed-point through {@see Money}/{@see Quantity} — never a float.
      *
      * @param  array<int, mixed>  $items  Validated `items` collection.
-     * @return array<int, array{product: Product, quantity: string, unit_cost: string, discount: string, tax: string, total: string}>
+     * @return array<int, array{product: Product, quantity: string, unit_cost: string, discount: string, mrp: string|null, selling_price: string|null, selling_code: string|null, tax: string, total: string}>
      *
      * @throws BusinessRuleException when a product is invalid or does not track stock.
      */
@@ -508,12 +568,51 @@ final class PurchaseService
                 'quantity' => $quantity,
                 'unit_cost' => $unitCost,
                 'discount' => $discount,
+                'mrp' => $this->nullableMoney($item['mrp'] ?? null),
+                'selling_price' => $this->nullableMoney($item['selling_price'] ?? null),
+                'selling_code' => $this->nullableCode($item['selling_code'] ?? null),
                 'tax' => $tax,
                 'total' => Money::add(Money::subtract($lineGross, $discount), $tax),
             ];
         }
 
         return $lines;
+    }
+
+    /**
+     * Normalise an optional money value: `null` (or blank) stays `null` so
+     * historic rows remain valid, otherwise a two-decimal string.
+     *
+     * @param  mixed  $value
+     */
+    private function nullableMoney(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if (is_string($value) && trim($value) === '') {
+            return null;
+        }
+
+        return Money::format($value);
+    }
+
+    /**
+     * Normalise an optional selling code: trim whitespace and treat blank
+     * strings as `null`, following the project convention for identifiers.
+     *
+     * @param  mixed  $value
+     */
+    private function nullableCode(mixed $value): ?string
+    {
+        if (! is_string($value)) {
+            return null;
+        }
+
+        $trimmed = trim($value);
+
+        return $trimmed === '' ? null : $trimmed;
     }
 
     /**

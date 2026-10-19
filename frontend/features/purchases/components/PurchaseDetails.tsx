@@ -52,10 +52,12 @@ function DetailRow({
  * Read-only purchase detail view — the "View" action (Phase 9).
  *
  * Everything the table omits is readable here: the received lines with their
- * agreed cost and discount, the full totals breakdown (subtotal → discount →
- * tax → total → paid → due), payment status, order note and timestamps.
- * Numbers come straight from the stored document — no recalculation — so the
- * details can never disagree with what was recorded. Mounted only while open.
+ * agreed cost and discount, the per-line MRP / selling price / selling code
+ * (purchase-specific values, `—` when absent), the full totals breakdown
+ * (subtotal → discount → tax → total → paid → due), payment status, order
+ * note and timestamps. Numbers come straight from the stored document — no
+ * recalculation — so the details can never disagree with what was recorded.
+ * Mounted only while open.
  */
 export function PurchaseDetails({ purchase, onOpenChange }: PurchaseDetailsProps) {
   return (
@@ -85,7 +87,7 @@ export function PurchaseDetails({ purchase, onOpenChange }: PurchaseDetailsProps
             Items received
           </h3>
           <div className="overflow-hidden rounded-lg border border-border">
-            <Table className="min-w-[480px]">
+            <Table className="min-w-[720px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Product</TableHead>
@@ -93,6 +95,9 @@ export function PurchaseDetails({ purchase, onOpenChange }: PurchaseDetailsProps
                   <TableHead className="text-right">Qty</TableHead>
                   <TableHead className="text-right">Cost</TableHead>
                   <TableHead className="text-right">Discount</TableHead>
+                  <TableHead className="text-right">MRP</TableHead>
+                  <TableHead className="text-right">Selling price</TableHead>
+                  <TableHead>Selling code</TableHead>
                   <TableHead className="text-right">Total</TableHead>
                 </TableRow>
               </TableHeader>
@@ -113,6 +118,15 @@ export function PurchaseDetails({ purchase, onOpenChange }: PurchaseDetailsProps
                     </TableCell>
                     <TableCell className="text-right tabular-nums text-muted-foreground">
                       {item.discount > 0 ? `−${formatMoney(item.discount)}` : "—"}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-muted-foreground">
+                      {item.mrp !== null ? formatMoney(item.mrp) : "—"}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-muted-foreground">
+                      {item.sellingPrice !== null ? formatMoney(item.sellingPrice) : "—"}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {item.sellingCode ?? "—"}
                     </TableCell>
                     <TableCell className="text-right font-medium tabular-nums">
                       {formatMoney(item.lineTotal)}

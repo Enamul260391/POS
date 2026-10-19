@@ -37,7 +37,7 @@ import {
   EMPTY_PURCHASE_LINE,
   EMPTY_PURCHASE_VALUES,
   purchaseSchema,
-  type PurchaseFormValues,
+  type PurchaseFormInput,
 } from "@/features/purchases/lib/purchaseSchema";
 import {
   calculatePurchaseTotals,
@@ -64,9 +64,9 @@ function FormError({ message }: { message?: string }) {
 
 interface NumberFieldProps {
   /** Any form path backed by a numeric input (`taxRate`, `items.0.quantity`, …). */
-  name: Path<PurchaseFormValues>;
+  name: Path<PurchaseFormInput>;
   label: string;
-  register: UseFormRegister<PurchaseFormValues>;
+  register: UseFormRegister<PurchaseFormInput>;
   error?: string;
   hint?: string;
 }
@@ -74,7 +74,9 @@ interface NumberFieldProps {
 /**
  * Numeric input registered uncontrolled with `valueAsNumber`: a blank `NaN`
  * renders as an empty field, so a forgotten cost fails as "Required" instead
- * of silently ordering for free.
+ * of silently ordering for free. Optional money fields (MRP, selling price)
+ * reuse the same input — an empty field stays `NaN` and the schema reads it
+ * as absent (`null`), never `0`.
  */
 function NumberField({ name, label, register, error, hint }: NumberFieldProps) {
   return (
@@ -99,9 +101,9 @@ function NumberField({ name, label, register, error, hint }: NumberFieldProps) {
 
 interface PurchaseLineRowProps {
   index: number;
-  form: UseFormReturn<PurchaseFormValues>;
+  form: UseFormReturn<PurchaseFormInput>;
   productOptions: readonly { value: string; label: string }[];
-  errors: FieldErrors<PurchaseFormValues>;
+  errors: FieldErrors<PurchaseFormInput>;
   /** Live line total from the watched form values (preview only). */
   lineTotal: number;
   canRemove: boolean;
@@ -204,6 +206,29 @@ function PurchaseLineRow({
           register={register}
           error={lineErrors?.discount?.message}
         />
+        <NumberField
+          name={`items.${index}.mrp`}
+          label="MRP"
+          register={register}
+          error={lineErrors?.mrp?.message}
+        />
+        <NumberField
+          name={`items.${index}.sellingPrice`}
+          label="Selling price"
+          register={register}
+          error={lineErrors?.sellingPrice?.message}
+        />
+        <div className="grid gap-1.5">
+          <Label htmlFor={`items.${index}.sellingCode`}>Selling code</Label>
+          <Input
+            id={`items.${index}.sellingCode`}
+            placeholder="Optional"
+            maxLength={50}
+            aria-invalid={lineErrors?.sellingCode !== undefined}
+            {...register(`items.${index}.sellingCode`)}
+          />
+          <FormError message={lineErrors?.sellingCode?.message} />
+        </div>
       </div>
 
       <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -283,7 +308,7 @@ export function PurchaseFormDialog({ onOpenChange }: PurchaseFormDialogProps) {
     [products],
   );
 
-  const form = useForm<PurchaseFormValues>({
+  const form = useForm<PurchaseFormInput>({
     resolver: zodResolver(purchaseSchema),
     defaultValues: EMPTY_PURCHASE_VALUES,
   });
@@ -330,7 +355,18 @@ export function PurchaseFormDialog({ onOpenChange }: PurchaseFormDialogProps) {
     setFormError(null);
     const result = await createPurchase({
       supplierId: values.supplierId,
-      lines: values.items,
+      lines: values.items.map((line) => ({
+        productId: line.productId,
+        quantity: line.quantity,
+        unitCost: line.unitCost,
+        discount: line.discount,
+        // The schema output is `number | null`; the raw input may hold
+        // `undefined`/`NaN` for untouched fields — the service normalises
+        // both to `null` for the API payload.
+        mrp: line.mrp ?? null,
+        sellingPrice: line.sellingPrice ?? null,
+        sellingCode: line.sellingCode,
+      })),
       taxRate: values.taxRate,
       paidAmount: values.paidAmount,
       note: values.note,

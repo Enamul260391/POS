@@ -60,7 +60,8 @@ final class ProductService
     /**
      * Paginated, tenant-scoped product list.
      *
-     * Search, category, status, SKU and barcode filters all run in SQL, the
+     * Search (name, SKU, barcode), category, status, SKU and
+     * barcode filters all run in SQL, the
      * category is eager loaded (no N+1) and the current stock arrives as a
      * correlated sub-query over the ledger, so the list is a constant number of
      * queries regardless of page size.

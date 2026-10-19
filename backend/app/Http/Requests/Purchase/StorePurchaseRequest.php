@@ -61,6 +61,9 @@ class StorePurchaseRequest extends FormRequest
             'items.*.quantity' => ['required', 'numeric', 'gt:0', 'max:'.Quantity::MAX, 'decimal:0,4'],
             'items.*.unit_cost' => ['required', 'numeric', 'min:0', 'max:'.Money::MAX, 'decimal:0,2'],
             'items.*.discount' => ['nullable', 'numeric', 'min:0', 'max:'.Money::MAX, 'decimal:0,2'],
+            'items.*.mrp' => ['nullable', 'numeric', 'min:0', 'max:'.Money::MAX, 'decimal:0,2'],
+            'items.*.selling_price' => ['nullable', 'numeric', 'min:0', 'max:'.Money::MAX, 'decimal:0,2'],
+            'items.*.selling_code' => ['nullable', 'string', 'max:50'],
             'items.*.tax' => ['nullable', 'numeric', 'min:0', 'max:'.Money::MAX, 'decimal:0,2'],
         ];
     }
@@ -75,7 +78,36 @@ class StorePurchaseRequest extends FormRequest
                 ? trim((string) $this->input('invoice_number'))
                 : null,
             'notes' => $this->filled('notes') ? trim((string) $this->input('notes')) : null,
+            'items' => $this->normaliseItems($this->input('items')),
         ]);
+    }
+
+    /**
+     * Trim each item `selling_code` and normalise blank strings to `null`,
+     * following the project convention for optional identifiers.
+     *
+     * @param  mixed  $items
+     * @return mixed
+     */
+    protected function normaliseItems(mixed $items): mixed
+    {
+        if (! is_array($items)) {
+            return $items;
+        }
+
+        foreach ($items as $index => $item) {
+            if (! is_array($item) || ! array_key_exists('selling_code', $item)) {
+                continue;
+            }
+
+            $code = $item['selling_code'];
+
+            $items[$index]['selling_code'] = is_string($code) && trim($code) !== ''
+                ? trim($code)
+                : null;
+        }
+
+        return $items;
     }
 
     /**

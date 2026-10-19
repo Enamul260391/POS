@@ -13,6 +13,9 @@ class PurchaseItem extends Model
         'quantity',
         'unit_cost',
         'discount',
+        'mrp',
+        'selling_price',
+        'selling_code',
         'tax',
         'total',
     ];
@@ -23,6 +26,8 @@ class PurchaseItem extends Model
             'quantity' => 'decimal:4',
             'unit_cost' => 'decimal:2',
             'discount' => 'decimal:2',
+            'mrp' => 'decimal:2',
+            'selling_price' => 'decimal:2',
             'tax' => 'decimal:2',
             'total' => 'decimal:2',
             'purchase_id' => 'integer',
