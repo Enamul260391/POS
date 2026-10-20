@@ -153,6 +153,7 @@ final class InventoryService
         ?string $note = null,
         ?string $referenceType = null,
         ?int $referenceId = null,
+        ?int $batchId = null,
     ): StockMovement {
         $movement = StockMovement::create([
             'business_id' => $product->business_id,
@@ -163,6 +164,7 @@ final class InventoryService
             'reference_id' => $referenceId,
             'note' => $note,
             'created_by' => $userId,
+            'batch_id' => $batchId,
         ]);
 
         // Realtime announcement, here and nowhere else.

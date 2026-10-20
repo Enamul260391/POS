@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\V1\CustomerController;
 use App\Http\Controllers\Api\V1\ExpenseCategoryController;
 use App\Http\Controllers\Api\V1\ExpenseController;
 use App\Http\Controllers\Api\V1\HealthController;
+use App\Http\Controllers\Api\V1\InventoryBatchController;
 use App\Http\Controllers\Api\V1\PermissionController;
 use App\Http\Controllers\Api\V1\ProductController;
 use App\Http\Controllers\Api\V1\PurchaseController;
@@ -297,6 +298,13 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::delete('/purchases/{purchase}', [PurchaseController::class, 'destroy'])
             ->middleware('can:purchases.delete')
             ->name('purchases.destroy');
+
+        // Inventory batches — read-only lot/expiry allocation layer on top of
+        // the stock movement ledger. Created by the purchase flow, consumed by
+        // the sale/return flow (STEP 3). No create/update/delete in STEP 2.
+        Route::get('/inventory-batches', [InventoryBatchController::class, 'index'])
+            ->middleware('can:inventory.view')
+            ->name('inventory-batches.index');
 
         // Sales — full CRUD; creation deducts ledger stock in one transaction.
         Route::get('/sales', [SaleController::class, 'index'])

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Purchase;
 
 use App\Exceptions\BusinessRuleException;
+use App\Models\InventoryBatch;
 use App\Models\Product;
 use App\Models\Purchase;
 use App\Models\PurchaseItem;
@@ -198,7 +199,7 @@ final class PurchaseService
             ]);
 
             foreach ($lines as $line) {
-                $purchase->purchaseItems()->create([
+                $purchaseItem = $purchase->purchaseItems()->create([
                     'product_id' => $line['product']->getKey(),
                     'quantity' => $line['quantity'],
                     'unit_cost' => $line['unit_cost'],
@@ -210,8 +211,34 @@ final class PurchaseService
                     'total' => $line['total'],
                 ]);
 
+                // Only stock-tracked products get a batch. Service lines
+                // (unit = service) never touch the ledger and never get a lot.
+                if (! $line['product']->tracksStock()) {
+                    continue;
+                }
+
+                // Idempotent: never create two batches for the same purchase
+                // item, even if the service is invoked twice for it.
+                $batch = InventoryBatch::where('purchase_item_id', $purchaseItem->getKey())->first();
+                if ($batch === null) {
+                    $batch = InventoryBatch::create([
+                        'business_id' => $businessId,
+                        'product_id' => $line['product']->getKey(),
+                        'purchase_item_id' => $purchaseItem->getKey(),
+                        'batch_number' => 'BATCH-'.$purchaseItem->getKey(),
+                        'received_date' => $data['purchase_date'],
+                        'expiry_date' => null,
+                        'received_quantity' => $line['quantity'],
+                        'remaining_quantity' => $line['quantity'],
+                        'cost_price' => $line['unit_cost'],
+                        'selling_price' => $line['selling_price'],
+                        'mrp' => $line['mrp'],
+                        'selling_code' => $line['selling_code'],
+                    ]);
+                }
+
                 // Stock in: a positive signed quantity appended to the ledger,
-                // traceable back to this purchase through the reference morph.
+                // traceable back to this purchase and to the batch it replenished.
                 $this->inventory->record(
                     $line['product'],
                     $userId,
@@ -220,6 +247,7 @@ final class PurchaseService
                     'Purchase #'.$purchase->getKey(),
                     Purchase::class,
                     $purchase->getKey(),
+                    $batch->getKey(),
                 );
             }
 

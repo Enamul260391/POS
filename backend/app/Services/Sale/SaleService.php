@@ -187,6 +187,7 @@ final class SaleService
                     'discount' => $line['discount'],
                     'tax' => $line['tax'],
                     'total' => $line['total'],
+                    'batch_id' => $line['batch_id'],
                 ]);
             }
 
@@ -331,7 +332,7 @@ final class SaleService
 
     /**
      * @param  array<int, mixed>  $items
-     * @return array<int, array{product: Product, quantity: string, unit_price: string, discount: string, tax: string, total: string}>
+     * @return array<int, array{product: Product, quantity: string, unit_price: string, discount: string, tax: string, total: string, batch_id: int|null}>
      */
     private function resolvedLines(int $businessId, array $items): array
     {
@@ -373,6 +374,7 @@ final class SaleService
                 'discount' => $discount,
                 'tax' => $tax,
                 'total' => Money::add(Money::subtract($lineGross, $discount), $tax),
+                'batch_id' => $item['batch_id'] ?? null,
             ];
         }
 

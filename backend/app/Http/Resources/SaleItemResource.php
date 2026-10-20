@@ -22,6 +22,15 @@ class SaleItemResource extends JsonResource
             'id' => $this->id,
             'sale_id' => $this->sale_id,
             'product_id' => $this->product_id,
+            'batch_id' => $this->batch_id,
+            'batch' => $this->whenLoaded('batch', function (): array {
+                return [
+                    'id' => $this->batch->id,
+                    'batch_number' => $this->batch->batch_number,
+                    'selling_price' => $this->batch->selling_price,
+                    'mrp' => $this->batch->mrp,
+                ];
+            }),
             'quantity' => Quantity::format($this->quantity),
             'unit_price' => $this->unit_price,
             'discount' => $this->discount,

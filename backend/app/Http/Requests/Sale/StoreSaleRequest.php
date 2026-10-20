@@ -5,26 +5,15 @@ declare(strict_types=1);
 namespace App\Http\Requests\Sale;
 
 use App\Http\Requests\Concerns\ResolvesBusiness;
+use App\Models\InventoryBatch;
 use App\Models\Payment;
 use App\Support\Money;
 use App\Support\Quantity;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Exists;
+use Illuminate\Validation\Validator;
 
-/**
- * Payload of `POST /api/v1/sales`.
- *
- * `invoice_number` is **server owned** and is therefore not an input.
- * `InvoiceNumberService` allocates it from the business' locked sequence row
- * inside the same transaction that creates the sale, so the number is
- * persistent, unique per business and impossible to guess or forge.
- *
- * The key is still declared — as `prohibited` — so a client that sends
- * `"invoice_number": "FAKE-123"` gets an explicit `422` telling it the field is
- * not writable, instead of having the value silently dropped and a real number
- * issued anyway. Either way the client cannot influence the outcome.
- */
 class StoreSaleRequest extends FormRequest
 {
     use ResolvesBusiness;
@@ -36,9 +25,6 @@ class StoreSaleRequest extends FormRequest
         return true;
     }
 
-    /**
-     * @return array<string, mixed>
-     */
     public function rules(): array
     {
         return [
@@ -57,13 +43,14 @@ class StoreSaleRequest extends FormRequest
             'items.*.unit_price' => ['nullable', 'numeric', 'min:0', 'max:'.Money::MAX, 'decimal:0,2'],
             'items.*.discount' => ['nullable', 'numeric', 'min:0', 'max:'.Money::MAX, 'decimal:0,2'],
             'items.*.tax' => ['nullable', 'numeric', 'min:0', 'max:'.Money::MAX, 'decimal:0,2'],
+            'items.*.batch_id' => ['nullable', 'integer', 'min:1'],
         ];
     }
 
     protected function prepareForValidation(): void
     {
-        // `invoice_number` is intentionally absent: normalising it here would
-        // put the key into the payload and trip its own `prohibited` rule on
+        // invoice_number is intentionally absent: normalising it here would
+        // put the key into the payload and trip its own prohibited rule on
         // every single request.
         $this->merge([
             'notes' => $this->filled('notes') ? trim((string) $this->input('notes')) : null,
@@ -83,5 +70,52 @@ class StoreSaleRequest extends FormRequest
         return Rule::exists('products', 'id')
             ->where('business_id', $this->businessId())
             ->whereNull('deleted_at');
+    }
+
+    protected function batchRule(): Exists
+    {
+        return Rule::exists('inventory_batches', 'id')
+            ->where('business_id', $this->businessId())
+            ->whereNull('deleted_at');
+    }
+
+    public function after(): array
+    {
+        return [
+            function (Validator $validator): void {
+                $items = $this->input('items', []);
+                if (! is_array($items)) {
+                    return;
+                }
+
+                foreach ($items as $index => $item) {
+                    if (! is_array($item) || ! array_key_exists('batch_id', $item) || ! $item['batch_id']) {
+                        continue;
+                    }
+
+                    $batchId = (int) $item['batch_id'];
+
+                    $batch = InventoryBatch::query()
+                        ->forBusiness($this->businessId())
+                        ->whereKey($batchId)
+                        ->first();
+
+                    if ($batch === null) {
+                        $validator->errors()->add(
+                            "items.{$index}.batch_id",
+                            'The selected batch does not belong to your business.',
+                        );
+                        continue;
+                    }
+
+                    if ((int) $item['product_id'] !== (int) $batch->product_id) {
+                        $validator->errors()->add(
+                            "items.{$index}.batch_id",
+                            'The selected batch does not belong to the product of this sale line.',
+                        );
+                    }
+                }
+            },
+        ];
     }
 }

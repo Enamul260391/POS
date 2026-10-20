@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+use App\Models\InventoryBatch;
+
 class SaleItem extends Model
 {
     protected $fillable = [
@@ -17,6 +19,7 @@ class SaleItem extends Model
         'discount',
         'tax',
         'total',
+        'batch_id',
     ];
 
     protected function casts(): array
@@ -30,7 +33,13 @@ class SaleItem extends Model
             'total' => 'decimal:2',
             'sale_id' => 'integer',
             'product_id' => 'integer',
+            'batch_id' => 'integer',
         ];
+    }
+
+    public function batch(): BelongsTo
+    {
+        return $this->belongsTo(InventoryBatch::class);
     }
 
     public function sale(): BelongsTo

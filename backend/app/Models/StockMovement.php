@@ -77,6 +77,7 @@ class StockMovement extends Model
         'reference_id',
         'note',
         'created_by',
+        'batch_id',
     ];
 
     protected function casts(): array
@@ -88,6 +89,7 @@ class StockMovement extends Model
             'type' => 'string',
             'business_id' => 'integer',
             'product_id' => 'integer',
+            'batch_id' => 'integer',
         ];
     }
 
