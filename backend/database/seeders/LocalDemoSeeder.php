@@ -306,14 +306,15 @@ class LocalDemoSeeder extends Seeder
     /**
      * Fourteen products across the four categories.
      *
-     * Opening stock is written as a `receive` movement by the product service —
-     * the same path the product form uses — because `products` has no stock
-     * column: on-hand quantity exists only as the sum of the `stock_movements`
-     * ledger. Nothing here writes a stock figure directly.
+     * A product is master data: it carries no stock, and creating one writes
+     * no stock movement and no batch. Every unit in the demo shop therefore
+     * arrives through the **purchases** below, which record the real purchase
+     * date and the known purchase cost and create the batch the lot is tracked
+     * in — the same path the application itself uses.
      *
      * `low_stock_threshold` is chosen against each product's *final* stock
-     * (opening + purchases - sales + returns) so that, once the whole dataset is
-     * in place, three products read as low stock and one as out of stock in the
+     * (purchases - sales + returns) so that, once the whole dataset is in
+     * place, three products read as low stock and one as out of stock in the
      * products list, the dashboard and the inventory report.
      *
      * @param  array<string, Category>  $categories
@@ -323,27 +324,27 @@ class LocalDemoSeeder extends Seeder
     {
         $service = app(ProductService::class);
 
-        // key => [category, name, cost, sell, opening stock, low-stock threshold, description]
+        // key => [category, name, cost, sell, low-stock threshold, description]
         $definitions = [
-            'mouse' => ['electronics', 'Wireless Mouse', '250.00', '400.00', 60, 10, 'Silent-click 2.4GHz wireless mouse.'],
-            'cable' => ['electronics', 'USB-C Cable 1m', '120.00', '200.00', 120, 20, 'Braided USB-C to USB-C charging cable, 1 metre.'],
-            'earbuds' => ['electronics', 'Bluetooth Earbuds', '1200.00', '1800.00', 25, 5, 'True wireless earbuds with charging case.'],
-            'charger' => ['electronics', '20W USB Charger', '450.00', '700.00', 3, 15, 'Compact 20W fast wall charger. Sits below its low-stock threshold.'],
-            'keyboard' => ['electronics', 'Mechanical Keyboard', '2200.00', '3200.00', 0, 5, 'Full-size mechanical keyboard. Never stocked and never sold here, so it reads as out of stock.'],
-            'backpack' => ['accessories', 'Laptop Backpack', '900.00', '1400.00', 20, 5, 'Water-resistant 15-inch laptop backpack.'],
-            'case' => ['accessories', 'Phone Case', '150.00', '300.00', 90, 15, 'Slim shock-absorbing phone case.'],
-            'cleaner' => ['accessories', 'Screen Cleaner Kit', '80.00', '150.00', 6, 30, 'Microfibre screen cleaning kit. Sits below its low-stock threshold.'],
-            'paper' => ['office', 'A4 Paper Ream', '380.00', '550.00', 50, 10, '80gsm A4 printing paper, 500 sheets.'],
-            'pen' => ['office', 'Ballpoint Pen Box', '90.00', '150.00', 200, 25, 'Box of 12 blue ballpoint pens.'],
-            'notes' => ['office', 'Sticky Notes Pack', '60.00', '110.00', 4, 25, 'Pack of 6 self-adhesive note pads. Sits below its low-stock threshold.'],
-            'organiser' => ['office', 'Desk Organiser', '350.00', '600.00', 15, 5, 'Multi-compartment desk organiser.'],
-            'noodles' => ['grocery', 'Instant Noodles 12pk', '300.00', '420.00', 80, 20, 'Pack of 12 instant noodles.'],
-            'tea' => ['grocery', 'Green Tea 25sachet', '180.00', '260.00', 45, 10, 'Box of 25 green tea sachets.'],
+            'mouse' => ['electronics', 'Wireless Mouse', '250.00', '400.00', 10, 'Silent-click 2.4GHz wireless mouse.'],
+            'cable' => ['electronics', 'USB-C Cable 1m', '120.00', '200.00', 20, 'Braided USB-C to USB-C charging cable, 1 metre.'],
+            'earbuds' => ['electronics', 'Bluetooth Earbuds', '1200.00', '1800.00', 5, 'True wireless earbuds with charging case.'],
+            'charger' => ['electronics', '20W USB Charger', '450.00', '700.00', 15, 'Compact 20W fast wall charger. Sits below its low-stock threshold.'],
+            'keyboard' => ['electronics', 'Mechanical Keyboard', '2200.00', '3200.00', 5, 'Full-size mechanical keyboard. Never purchased and never sold here, so it reads as out of stock.'],
+            'backpack' => ['accessories', 'Laptop Backpack', '900.00', '1400.00', 5, 'Water-resistant 15-inch laptop backpack.'],
+            'case' => ['accessories', 'Phone Case', '150.00', '300.00', 15, 'Slim shock-absorbing phone case.'],
+            'cleaner' => ['accessories', 'Screen Cleaner Kit', '80.00', '150.00', 30, 'Microfibre screen cleaning kit. Sits below its low-stock threshold.'],
+            'paper' => ['office', 'A4 Paper Ream', '380.00', '550.00', 10, '80gsm A4 printing paper, 500 sheets.'],
+            'pen' => ['office', 'Ballpoint Pen Box', '90.00', '150.00', 25, 'Box of 12 blue ballpoint pens.'],
+            'notes' => ['office', 'Sticky Notes Pack', '60.00', '110.00', 25, 'Pack of 6 self-adhesive note pads. Sits below its low-stock threshold.'],
+            'organiser' => ['office', 'Desk Organiser', '350.00', '600.00', 5, 'Multi-compartment desk organiser.'],
+            'noodles' => ['grocery', 'Instant Noodles 12pk', '300.00', '420.00', 20, 'Pack of 12 instant noodles.'],
+            'tea' => ['grocery', 'Green Tea 25sachet', '180.00', '260.00', 10, 'Box of 25 green tea sachets.'],
         ];
 
         $products = [];
 
-        foreach ($definitions as $key => [$categoryKey, $name, $cost, $sell, $opening, $threshold, $description]) {
+        foreach ($definitions as $key => [$categoryKey, $name, $cost, $sell, $threshold, $description]) {
             $sku = self::SKU_PREFIX.strtoupper($key);
 
             $existing = Product::query()
@@ -352,10 +353,10 @@ class LocalDemoSeeder extends Seeder
                 ->first();
 
             if ($existing !== null) {
-                // Reuse, and keep the master data in step with this file. The
-                // opening stock is deliberately NOT re-posted: the ledger already
-                // holds it, and a second `receive` would silently double the
-                // balance.
+                // Reuse, and keep the master data in step with this file. Stock is
+                // deliberately NOT touched: it belongs to the ledger, and the
+                // purchases below are its only source. Re-posting it here would
+                // silently double the balance.
                 $existing->fill([
                     'category_id' => $categories[$categoryKey]->getKey(),
                     'name' => $name,
@@ -382,8 +383,6 @@ class LocalDemoSeeder extends Seeder
                 'tax_rate' => '0.00',
                 'unit' => 'pcs',
                 'low_stock_threshold' => $threshold,
-                // Written to the ledger by the product service, not to a column.
-                'opening_stock' => $opening,
                 'status' => Product::STATUS_ACTIVE,
             ]);
         }
@@ -581,28 +580,34 @@ class LocalDemoSeeder extends Seeder
     {
         $service = app(PurchaseService::class);
 
-        // [supplier index, days ago, settlement, lines[product => [qty, unit cost]]]
+        // [supplier index, days ago, settlement, lines[product => [qty, unit cost, selling price]]]
+        //
+        // The selling price is the price the lot was bought at, and it becomes
+        // the batch's own price — the price the POS sells that lot at. It is
+        // stated per line because a lot may legitimately differ from the
+        // product's master price: the screen cleaner was bought on a deal at
+        // 140.00 while the product itself is listed at 150.00.
         $definitions = [
             [0, 35, 'paid', [
-                'mouse' => [30, '240.00'],
-                'cable' => [60, '115.00'],
-                'case' => [50, '145.00'],
+                'mouse' => [30, '240.00', '400.00'],
+                'cable' => [60, '115.00', '200.00'],
+                'case' => [50, '145.00', '300.00'],
             ]],
             [1, 20, 'partial', [
-                'paper' => [40, '370.00'],
-                'pen' => [100, '85.00'],
-                'organiser' => [10, '340.00'],
-                'noodles' => [60, '290.00'],
+                'paper' => [40, '370.00', '550.00'],
+                'pen' => [100, '85.00', '150.00'],
+                'organiser' => [10, '340.00', '600.00'],
+                'noodles' => [60, '290.00', '420.00'],
             ]],
             [2, 12, 'paid', [
-                'earbuds' => [20, '1150.00'],
-                'backpack' => [15, '880.00'],
-                'tea' => [40, '175.00'],
+                'earbuds' => [20, '1150.00', '1800.00'],
+                'backpack' => [15, '880.00', '1400.00'],
+                'tea' => [40, '175.00', '260.00'],
             ]],
             [0, 5, 'pending', [
-                'charger' => [10, '440.00'],
-                'cleaner' => [20, '75.00'],
-                'notes' => [20, '55.00'],
+                'charger' => [10, '440.00', '700.00'],
+                'cleaner' => [20, '75.00', '140.00'],
+                'notes' => [20, '55.00', '110.00'],
             ]],
         ];
 
@@ -622,11 +627,12 @@ class LocalDemoSeeder extends Seeder
             $items = [];
             $subtotal = '0.00';
 
-            foreach ($lines as $productKey => [$quantity, $unitCost]) {
+            foreach ($lines as $productKey => [$quantity, $unitCost, $sellingPrice]) {
                 $items[] = [
                     'product_id' => (int) $products[$productKey]->getKey(),
                     'quantity' => $quantity,
                     'unit_cost' => $unitCost,
+                    'selling_price' => $sellingPrice,
                 ];
                 $subtotal = Money::add($subtotal, Money::multiply((string) $quantity, $unitCost));
             }
@@ -750,6 +756,12 @@ class LocalDemoSeeder extends Seeder
      *
      * Rows: [days ago, customer index|null, method, settlement, discount, tax,
      * note, lines[product => [qty, unit price override|null]]].
+     *
+     * The unit price is `null` for every line except the screen cleaner, whose
+     * lot was bought at 140.00 and is therefore sold at 140.00 — the batch's own
+     * price, which is the only price a sale may carry. A line may not name a
+     * price the lot does not have: the API confirms the price server-side and
+     * refuses a mismatch rather than silently switching it.
      *
      * Distribution is deliberate: five today, three yesterday, three across the
      * rest of the week, two eighteen/thirty-two days back so the previous month

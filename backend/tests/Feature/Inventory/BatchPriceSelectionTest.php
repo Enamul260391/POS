@@ -115,6 +115,68 @@ class BatchPriceSelectionTest extends TestCase
         $this->assertSame('20', Quantity::format((string) $options[0]['available_quantity']));
     }
 
+    /**
+     * @test
+     *
+     * A depleted batch is excluded from the price options while a sibling batch
+     * of the same price is still in stock.
+     *
+     * The options payload carries one entry per distinct selling price, and each
+     * entry names the *baseline* batch of that price — the oldest eligible one —
+     * together with the combined stock at that price. A batch that has been sold
+     * out is not eligible any more, so it can neither keep the baseline nor
+     * contribute to the available quantity.
+     *
+     * The scenario therefore depletes the *older* of two same-price lots, so the
+     * surviving lot becomes the baseline. That makes the change in the payload
+     * diagnostic: the baseline id moves, the available quantity drops to the
+     * surviving lot's own stock, and the depleted lot's id is gone.
+     */
+    public function a_depleted_batch_is_excluded_from_the_price_options(): void
+    {
+        // Two lots of the same product at the same selling price, received on
+        // different dates so the FIFO order is unambiguous.
+        $older = $this->buy('4', 100, now()->subDays(2)->toDateString());
+        $newer = $this->buy('6', 100, now()->subDay()->toDateString());
+
+        // Before the sale the single price option points at the older lot and
+        // reports the combined stock of both.
+        $before = $this->priceOptions();
+        $this->assertCount(1, $before);
+        $this->assertSame($older->id, $before[0]['batch_id']);
+        $this->assertSame('10', Quantity::format((string) $before[0]['available_quantity']));
+
+        // Selling the older lot's exact stock empties it. No batch id is sent,
+        // so the automatic price selection and the FIFO allocation pick the
+        // lot: the oldest one, which is exactly what the options pointed at.
+        $response = $this->sell([[
+            'product_id' => $this->product->id,
+            'quantity' => 4,
+            'unit_price' => 100,
+        ]]);
+        $response->assertStatus(201);
+
+        $items = $response->json('data.items');
+        $this->assertCount(1, $items);
+        $this->assertSame($older->id, (int) $items[0]['batch_id']);
+        $this->assertSame('4', Quantity::format((string) $items[0]['quantity']));
+
+        $this->assertSame('0', $this->remainingOf($older->id));
+        $this->assertSame('6', $this->remainingOf($newer->id));
+
+        // The depleted lot is gone from the options: the price still has exactly
+        // one option, but it now names the surviving lot and reports only that
+        // lot's stock.
+        $options = $this->priceOptions();
+        $this->assertCount(1, $options);
+        $this->assertSame($newer->id, $options[0]['batch_id']);
+        $this->assertSame(
+            $this->remainingOf($newer->id),
+            Quantity::format((string) $options[0]['available_quantity']),
+        );
+        $this->assertNotContains($older->id, array_column($options, 'batch_id'));
+    }
+
     /** @test */
     public function single_price_auto_selects_and_allocates_fifo_with_split_rows(): void
     {

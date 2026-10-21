@@ -68,4 +68,36 @@ describe("productService — product body", () => {
       sku: "COKE-2",
     }));
   });
+
+  it("sends no stock field on create", async () => {
+    // The wire body is the API contract. A quantity in it would be rejected by
+    // `StoreProductRequest`, and stock belongs to the purchase workflow.
+    post.mockResolvedValue(echoedPayload as never);
+
+    await createProduct({ name: "Coke" });
+
+    const body = post.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(body).not.toHaveProperty("opening_stock");
+    expect(body).not.toHaveProperty("stock");
+  });
+
+  it("sends no stock field on update", async () => {
+    patch.mockResolvedValue(echoedPayload as never);
+
+    await updateProduct(3, { name: "Coke" });
+
+    const body = patch.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(body).not.toHaveProperty("opening_stock");
+    expect(body).not.toHaveProperty("stock");
+  });
+
+  it("keeps the low-stock threshold, which is an alert level and not a quantity", async () => {
+    post.mockResolvedValue(echoedPayload as never);
+
+    await createProduct({ name: "Coke", lowStockThreshold: 25 });
+
+    expect(post).toHaveBeenCalledWith("/products", expect.objectContaining({
+      low_stock_threshold: 25,
+    }));
+  });
 });

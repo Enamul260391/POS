@@ -113,7 +113,7 @@ describe("ProductFormDialog — product fields", () => {
       target: { value: "New Product" },
     });
     // Required numeric fields, filled with the same values the form expects.
-    for (const label of ["Cost price", "Selling price", "Opening stock", "Low stock threshold"]) {
+    for (const label of ["Cost price", "Selling price", "Low stock threshold"]) {
       fireEvent.change(screen.getByLabelText(label), { target: { value: "10" } });
     }
     await selectFirstCategory();

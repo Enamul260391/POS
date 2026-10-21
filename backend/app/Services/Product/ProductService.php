@@ -5,14 +5,11 @@ declare(strict_types=1);
 namespace App\Services\Product;
 
 use App\Models\Product;
-use App\Models\StockMovement;
-use App\Services\Inventory\InventoryService;
 use App\Services\Realtime\RealtimeBroadcaster;
-use App\Support\Quantity;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Facades\DB;
 
 /**
  * Business logic for the product catalogue.
@@ -20,8 +17,8 @@ use Illuminate\Support\Facades\DB;
  * Products hold master data only — there is no stock column to write. On-hand
  * quantity is always derived from the `stock_movements` ledger
  * ({@see Product::scopeWithCurrentStock()}), so this service owns no inventory
- * arithmetic; the single exception is `opening_stock` at creation time, which
- * is handed to {@see InventoryService} as a ledger row inside a transaction.
+ * arithmetic at all: stock enters the system only through the Purchase
+ * workflow, and every later change to it through the stock-adjustment endpoint.
  */
 final class ProductService
 {
@@ -42,9 +39,6 @@ final class ProductService
     /** Unit applied when the client does not choose one (column default). */
     public const DEFAULT_UNIT = 'pcs';
 
-    /** Ledger note written for the movement created by `opening_stock`. */
-    private const OPENING_STOCK_NOTE = 'Opening stock';
-
     /** Master-data columns a client may change. */
     private const EDITABLE_COLUMNS = [
         'category_id', 'name', 'sku', 'barcode', 'description',
@@ -53,7 +47,6 @@ final class ProductService
     ];
 
     public function __construct(
-        private readonly InventoryService $inventory,
         private readonly RealtimeBroadcaster $realtime,
     ) {}
 
@@ -106,7 +99,7 @@ final class ProductService
      * Resolve one product inside the tenant (with category and current stock),
      * or fail with a 404 envelope.
      *
-     * @throws \Illuminate\Database\Eloquent\ModelNotFoundException
+     * @throws ModelNotFoundException
      */
     public function find(int $businessId, int $productId): Product
     {
@@ -119,45 +112,31 @@ final class ProductService
     /**
      * Create a product for the given business.
      *
-     * The tenant always comes from the caller. When `opening_stock` is greater
-     * than zero the initial quantity is written to the ledger as a `receive`
-     * movement — never stored on the product — and because that is two writes
-     * the whole operation runs in one transaction: a failure leaves neither a
-     * product nor a movement behind.
+     * The tenant always comes from the caller.
+     *
+     * Creating a product writes **master data only**: no stock movement, no
+     * inventory batch and no on-hand quantity. Stock enters the system through
+     * the Purchase workflow (`POST /api/v1/purchases`), which records the real
+     * purchase date and the known purchase cost and creates the batch the lot
+     * is tracked in — so the ledger never holds a quantity whose cost or origin
+     * nobody knows.
      *
      * @param  array<string, mixed>  $data
      */
     public function create(int $businessId, ?int $userId, array $data): Product
     {
-        $product = DB::transaction(function () use ($businessId, $userId, $data): Product {
-            $product = Product::create([
-                ...$this->masterData($data),
-                'business_id' => $businessId,
-            ]);
+        $product = Product::create([
+            ...$this->masterData($data),
+            'business_id' => $businessId,
+        ]);
 
-            $openingStock = $data['opening_stock'] ?? 0;
-
-            if (Quantity::isPositive($openingStock)) {
-                $this->inventory->record(
-                    product: $product,
-                    userId: $userId,
-                    type: StockMovement::TYPE_RECEIVE,
-                    quantity: Quantity::format($openingStock),
-                    note: self::OPENING_STOCK_NOTE,
-                );
-            }
-
-            return $this->find($businessId, $product->id);
-        });
-
-        // Announced here, after the transaction has returned — i.e. after it
-        // committed. The event itself is also `ShouldDispatchAfterCommit`, so a
-        // rollback removes it entirely; announcing outside the closure simply
-        // keeps the "created" signal tied to the same commit as the row. The
-        // opening stock, if any, is announced separately by InventoryService.
+        // Announced after the row is written. The event is
+        // `ShouldDispatchAfterCommit`, so a rollback removes it entirely, and
+        // announcing it here keeps the "created" signal tied to the same commit
+        // as the row.
         $this->realtime->productCreated($product);
 
-        return $product;
+        return $this->find($businessId, $product->id);
     }
 
     /**

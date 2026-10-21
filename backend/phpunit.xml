@@ -18,19 +18,46 @@
         </include>
     </source>
     <php>
-        <env name="APP_ENV" value="testing"/>
+        <!--
+            `force="true"` is what makes these values win over an inherited
+            shell environment.
+
+            PHPUnit only applies an `<env>` entry when the variable is NOT
+            already set (see PhpHandler: `if ($force || getenv($name) === false)`),
+            so without `force` a shell that exported `DB_CONNECTION=mysql` would
+            silently send the whole suite to the local MySQL database — where
+            `RefreshDatabase` rebuilds it with `migrate:fresh`, dropping every
+            table. Forcing the isolated database here makes that impossible;
+            `Tests\TestCase::setUp()` is the backstop for anything that
+            bypasses this file.
+        -->
+        <env name="APP_ENV" value="testing" force="true"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
         <env name="CACHE_STORE" value="array"/>
-        <env name="DB_CONNECTION" value="sqlite"/>
-        <env name="DB_DATABASE" value=":memory:"/>
-        <env name="DB_URL" value=""/>
+        <env name="DB_CONNECTION" value="sqlite" force="true"/>
+        <env name="DB_DATABASE" value=":memory:" force="true"/>
+        <env name="DB_URL" value="" force="true"/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+
+        <!--
+            The same three values, written to `$_SERVER` as well.
+
+            Laravel's `env()` reads `$_SERVER` before `getenv()`, so an `<env>`
+            entry alone is not enough: a shell that exported `DB_CONNECTION`
+            leaves its value in `$_SERVER`, and that is the one the application
+            resolves. PHPUnit writes `$_SERVER` unconditionally for a `<server>`
+            entry, so this is what actually makes the isolated database win.
+        -->
+        <server name="APP_ENV" value="testing"/>
+        <server name="DB_CONNECTION" value="sqlite"/>
+        <server name="DB_DATABASE" value=":memory:"/>
+        <server name="DB_URL" value=""/>
     </php>
 </phpunit>

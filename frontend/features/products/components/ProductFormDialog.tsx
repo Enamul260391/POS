@@ -62,11 +62,7 @@ const ACTION_OPTION_VALUE = "__action__";
 const CREATE_CATEGORY_LABEL = "+ Create new category";
 
 /** Form fields backed by a numeric input. */
-type NumericFieldName =
-  | "costPrice"
-  | "sellingPrice"
-  | "openingStock"
-  | "lowStockThreshold";
+type NumericFieldName = "costPrice" | "sellingPrice" | "lowStockThreshold";
 
 /** Form fields backed by a Select. */
 type SelectFieldName = "categoryId" | "unit" | "status";
@@ -120,8 +116,6 @@ interface NumberFieldProps {
   label: string;
   register: UseFormRegister<ProductFormValues>;
   error?: string;
-  /** Read-only instead of disabled so the value still submits (edit mode). */
-  readOnly?: boolean;
   hint?: string;
 }
 
@@ -138,7 +132,6 @@ function NumberField({
   label,
   register,
   error,
-  readOnly,
   hint,
 }: NumberFieldProps) {
   return (
@@ -150,9 +143,7 @@ function NumberField({
         inputMode="decimal"
         min={0}
         step="0.01"
-        readOnly={readOnly}
         aria-invalid={error !== undefined}
-        className={cn(readOnly && "bg-input/40")}
         {...register(name, { valueAsNumber: true })}
       />
       {hint !== undefined && (
@@ -269,7 +260,6 @@ const PRODUCT_FORM_FIELDS = [
   "costPrice",
   "sellingPrice",
   "unit",
-  "openingStock",
   "lowStockThreshold",
   "status",
 ] as const;
@@ -284,8 +274,9 @@ const PRODUCT_FORM_FIELDS = [
  * needed every product in memory to save one round trip.
  *
  * Saving posts to Laravel and updates the catalogue cache with the response.
- * Edit never sends stock: quantity moves exclusively through the stock
- * adjustment ledger, which is why the opening-stock field stays read-only.
+ * The form never carries a quantity: a product is master data, and stock
+ * enters the system through a purchase. There is therefore no stock field to
+ * disable in edit mode — there is no stock field at all.
  *
  * Quick-create: the category select carries a trailing "+ Create new category"
  * action that opens {@link CreateCategoryDialog} on top of this dialog. The new
@@ -342,10 +333,10 @@ export function ProductFormDialog({ target, onOpenChange }: ProductFormDialogPro
    *
    * Phase 25: the store is the cache, the API is the authority. A `422` from
    * `StoreProductRequest` / `UpdateProductRequest` is mapped back onto the
-   * offending inputs (Laravel keys errors by column name — `category_id`,
-   * `opening_stock` — so the translation happens in `@/lib/api/validation`), and
-   * anything else is shown as a form-level message. The dialog only closes on
-   * success, so a rejection leaves the entered values on screen.
+   * offending inputs (Laravel keys errors by column name — `category_id` —
+   * so the translation happens in `@/lib/api/validation`), and anything else is
+   * shown as a form-level message. The dialog only closes on success, so a
+   * rejection leaves the entered values on screen.
    */
   const save = handleSubmit(async (values) => {
     const store = useCatalogueStore.getState();
@@ -456,18 +447,6 @@ export function ProductFormDialog({ target, onOpenChange }: ProductFormDialogPro
               label="Selling price"
               register={register}
               error={errors.sellingPrice?.message}
-            />
-            <NumberField
-              name="openingStock"
-              label="Opening stock"
-              register={register}
-              error={errors.openingStock?.message}
-              readOnly={isEdit}
-              hint={
-                isEdit
-                  ? "Managed in Inventory — adjustments record stock movements."
-                  : undefined
-              }
             />
 
             <div className="grid gap-1.5 sm:col-span-2">

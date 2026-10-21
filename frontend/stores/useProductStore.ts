@@ -149,8 +149,11 @@ function messageOf(error: unknown, fallback: string): string {
  * Blank optional strings become `null` because Laravel normalises them anyway
  * and the unique indexes treat "no SKU" as NULL, not `''`. `categoryId === 0` is
  * the select's "not chosen" sentinel, sent as a null category.
+ *
+ * There is no quantity in the payload, for create or update: a product is
+ * master data, and stock moves only through the stock-adjustment ledger.
  */
-function toProductInput(values: ProductFormValues, isEdit: boolean) {
+function toProductInput(values: ProductFormValues) {
   return {
     name: values.name.trim(),
     sku: values.sku.trim() || null,
@@ -161,9 +164,6 @@ function toProductInput(values: ProductFormValues, isEdit: boolean) {
     lowStockThreshold: values.lowStockThreshold,
     unit: values.unit,
     status: values.status,
-    // Opening stock is create-only: afterwards quantity moves exclusively
-    // through the stock-adjustment ledger.
-    ...(isEdit ? {} : { openingStock: values.openingStock }),
   };
 }
 
@@ -404,13 +404,13 @@ export const useCatalogueStore = create<CatalogueStore>()((set, get) => ({
   },
 
   async createProduct(values) {
-    const created = await createProductRequest(toProductInput(values, false));
+    const created = await createProductRequest(toProductInput(values));
     set((state) => ({ products: [created, ...state.products] }));
     return created;
   },
 
   async updateProduct(productId, values) {
-    const updated = await updateProductRequest(productId, toProductInput(values, true));
+    const updated = await updateProductRequest(productId, toProductInput(values));
     // Replace rather than merge: the response is the authoritative row,
     // including the stock balance the ledger reports.
     set((state) => ({

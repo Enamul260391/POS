@@ -47,15 +47,15 @@ export interface ProductInput {
   lowStockThreshold?: number | null;
   image?: string | null;
   status?: "active" | "inactive";
-  /**
-   * Opening stock, accepted **only** at creation time: the API writes it to the
-   * ledger as a stock movement instead of storing it on the product.
-   */
-  openingStock?: number | null;
 }
 
-/** Body of `PUT|PATCH /products/{id}` (`UpdateProductRequest`). */
-export type ProductUpdateInput = Omit<ProductInput, "openingStock">;
+/**
+ * Body of `PUT|PATCH /products/{id}` (`UpdateProductRequest`).
+ *
+ * Master data only — the same shape as a create, because a product never
+ * carries a quantity in either direction.
+ */
+export type ProductUpdateInput = ProductInput;
 
 /** Maps the frontend filter object onto the query string. */
 function toQuery(filters: ProductFilters | undefined): ApiRequestConfig["params"] {
@@ -229,12 +229,15 @@ export async function findProductByCode(
   return bySku.items[0] ?? null;
 }
 
-/** `POST /products` — creates a product, seeding the ledger when opening stock is given. */
+/**
+ * `POST /products` — creates a product.
+ *
+ * Master data only. Stock is never part of the payload: every unit enters the
+ * system through a purchase, which records the real purchase date and the
+ * known purchase cost.
+ */
 export async function createProduct(input: ProductInput): Promise<Product> {
-  const payload = await apiPost<ProductPayload>("/products", {
-    ...toProductBody(input),
-    opening_stock: input.openingStock ?? null,
-  });
+  const payload = await apiPost<ProductPayload>("/products", toProductBody(input));
   return toProduct(payload);
 }
 

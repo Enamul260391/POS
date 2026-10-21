@@ -18,6 +18,10 @@ use Illuminate\Validation\Rules\Unique;
  * change), and neither `stock` nor `opening_stock` is part of the contract:
  * inventory moves through `POST /api/v1/products/{product}/stock-adjustments`
  * and the ledger, so a client that posts a stock field simply changes nothing.
+ *
+ * A product is therefore **never** a way to add stock, in either direction:
+ * creation rejects `opening_stock` outright, and an update has no field that
+ * could carry a quantity.
  */
 class UpdateProductRequest extends FormRequest
 {

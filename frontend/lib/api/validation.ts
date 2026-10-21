@@ -6,10 +6,10 @@ import type { ApiError, ApiValidationErrors } from "@/types/api";
  * Mapping backend validation errors onto form fields.
  *
  * Laravel answers a `422` with an error bag keyed by **column** name
- * (`category_id`, `opening_stock`, `items.0.quantity`). React Hook Form is keyed
- * by the **frontend** field name (`categoryId`, `openingStock`,
- * `items.0.quantity`). Without a translation the messages would land nowhere,
- * so every form that posts to the API declares its aliases once here.
+ * (`category_id`, `items.0.quantity`). React Hook Form is keyed by the
+ * **frontend** field name (`categoryId`, `items.0.quantity`). Without a
+ * translation the messages would land nowhere, so every form that posts to
+ * the API declares its aliases once here.
  *
  * The rule is mechanical: `snake_case` ⇄ `camelCase`, plus whatever explicit
  * aliases a form needs (`items.0.product_id` → `items.0.productId`).

@@ -6,20 +6,24 @@ namespace App\Http\Requests\Product;
 
 use App\Http\Requests\Concerns\ResolvesBusiness;
 use App\Models\Product;
-use App\Support\Quantity;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Exists;
 use Illuminate\Validation\Rules\Unique;
-use Illuminate\Validation\Validator;
 
 /**
  * Payload of `POST /api/v1/products`.
  *
  * Mirrors the actual `products` table (Phase 16): no `stock` column exists, so
- * on-hand quantity is never posted directly. `opening_stock` is accepted once,
- * at creation time, and is written to the ledger as a stock movement instead
- * of being stored on the product.
+ * on-hand quantity is never posted directly.
+ *
+ * `opening_stock` is **prohibited**. Stock — including goods bought before the
+ * POS was introduced — enters the system through the Purchase workflow
+ * (`POST /api/v1/purchases`), which records the real purchase date and the
+ * known purchase cost and creates the inventory batch the lot is tracked in.
+ * The field is rejected rather than silently dropped so a client that still
+ * sends it learns that no stock was created, instead of believing a quantity
+ * entered the shop.
  *
  * `business_id` is intentionally absent — the tenant comes from the
  * authenticated user.
@@ -54,30 +58,7 @@ class StoreProductRequest extends FormRequest
             'low_stock_threshold' => ['nullable', 'integer', 'min:0', 'max:4294967295'],
             'image' => ['nullable', 'string', 'max:255'],
             'status' => ['nullable', 'string', Rule::in(Product::STATUSES)],
-            'opening_stock' => ['nullable', 'numeric', 'min:0', 'max:'.Quantity::MAX, 'decimal:0,4'],
-        ];
-    }
-
-    /**
-     * Reject opening stock on products that are not stock tracked.
-     *
-     * @return array<int, callable>
-     */
-    public function after(): array
-    {
-        return [
-            function (Validator $validator): void {
-                if ($this->input('unit') !== Product::UNIT_SERVICE) {
-                    return;
-                }
-
-                if (Quantity::isPositive($this->input('opening_stock', 0))) {
-                    $validator->errors()->add(
-                        'opening_stock',
-                        'Opening stock cannot be set for a service product.',
-                    );
-                }
-            },
+            'opening_stock' => ['prohibited'],
         ];
     }
 

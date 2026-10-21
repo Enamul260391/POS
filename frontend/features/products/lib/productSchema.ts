@@ -86,9 +86,6 @@ const productFields = {
     .number({ invalid_type_error: "Required" })
     .min(0, "Cannot be negative"),
   unit: z.enum(UNIT_VALUES),
-  openingStock: z
-    .number({ invalid_type_error: "Required" })
-    .min(0, "Cannot be negative"),
   lowStockThreshold: z
     .number({ invalid_type_error: "Required" })
     .min(0, "Cannot be negative"),
@@ -106,6 +103,9 @@ export type ProductFormValues = z.infer<typeof baseProductSchema>;
  * Numeric fields start as `NaN`: the number inputs render empty and a
  * forgotten price fails validation with "Required" instead of silently
  * saving a free product. `categoryId` starts at `0` ("not chosen").
+ *
+ * There is deliberately **no** stock field: a product carries master data only,
+ * and every unit enters the system through a purchase.
  */
 export const EMPTY_PRODUCT_VALUES: ProductFormValues = {
   name: "",
@@ -115,7 +115,6 @@ export const EMPTY_PRODUCT_VALUES: ProductFormValues = {
   costPrice: Number.NaN,
   sellingPrice: Number.NaN,
   unit: "piece",
-  openingStock: Number.NaN,
   lowStockThreshold: Number.NaN,
   status: "active",
 };
@@ -130,8 +129,6 @@ export function toProductFormValues(product: Product): ProductFormValues {
     costPrice: product.costPrice,
     sellingPrice: product.sellingPrice,
     unit: product.unit,
-    // Shown read-only: quantity is owned by the inventory ledger.
-    openingStock: product.stock,
     lowStockThreshold: product.lowStockThreshold,
     status: product.status,
   };

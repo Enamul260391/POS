@@ -15,7 +15,6 @@ const validValues = {
   categoryId: 1,
   costPrice: 10,
   sellingPrice: 15,
-  openingStock: 0,
   lowStockThreshold: 5,
 };
 

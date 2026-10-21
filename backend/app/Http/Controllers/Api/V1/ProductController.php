@@ -56,8 +56,9 @@ class ProductController extends Controller
     /**
      * Create a product for the authenticated user's business.
      *
-     * An optional `opening_stock` is written to the ledger by the service —
-     * never stored on the product row.
+     * Master data only. The request carries no stock: on-hand quantity is
+     * never posted on a product, and `opening_stock` is rejected outright —
+     * stock enters the system through the Purchase workflow.
      */
     public function store(StoreProductRequest $request): JsonResponse
     {

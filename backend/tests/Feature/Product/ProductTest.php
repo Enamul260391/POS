@@ -9,6 +9,7 @@ use App\Models\Category;
 use App\Models\Product;
 use App\Models\StockMovement;
 use App\Models\User;
+use App\Support\Quantity;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\Feature\Concerns\InteractsWithPosApi;
@@ -324,27 +325,121 @@ class ProductTest extends TestCase
         $this->assertArrayNotHasKey('business_id', $response->json('data'));
     }
 
-    /** @test */
-    public function opening_stock_is_written_to_the_ledger_not_to_the_product(): void
+    /**
+     * @test
+     *
+     * Creating a product creates **no stock at all**.
+     *
+     * A product is master data. On-hand quantity lives exclusively in the
+     * `stock_movements` ledger, and every unit enters the system through the
+     * Purchase workflow — which records the real purchase date and the known
+     * purchase cost and creates the batch the lot is tracked in. A product
+     * creation therefore writes no movement, no batch and no quantity.
+     */
+    public function creating_a_product_creates_no_stock_movement_batch_or_quantity(): void
+    {
+        $response = $this->postJson('/api/v1/products', ['name' => 'Rice Bag']);
+
+        $response->assertStatus(201)
+            ->assertJson(['data' => ['current_stock' => '0']]);
+
+        $productId = $response->json('data.id');
+
+        $this->assertDatabaseCount('stock_movements', 0);
+        $this->assertDatabaseCount('inventory_batches', 0);
+        $this->assertDatabaseMissing('stock_movements', ['product_id' => $productId]);
+        $this->assertDatabaseMissing('inventory_batches', ['product_id' => $productId]);
+    }
+
+    /**
+     * @test
+     *
+     * A product that carries a threshold but no stock is still a product with
+     * no stock: the threshold is an alert level, never a quantity.
+     */
+    public function a_low_stock_threshold_does_not_create_stock(): void
+    {
+        $response = $this->postJson('/api/v1/products', [
+            'name' => 'Rice Bag',
+            'low_stock_threshold' => 25,
+        ]);
+
+        $response->assertStatus(201)
+            ->assertJson(['data' => ['low_stock_threshold' => 25, 'current_stock' => '0']]);
+
+        $this->assertDatabaseCount('stock_movements', 0);
+        $this->assertDatabaseCount('inventory_batches', 0);
+    }
+
+    /**
+     * @test
+     *
+     * `opening_stock` is rejected outright rather than silently dropped.
+     *
+     * A client that still sends the field gets a clear `422` instead of a
+     * success it would read as "the stock was created" — the difference
+     * between a loud failure and a silent loss of stock.
+     */
+    public function opening_stock_is_rejected_on_creation(): void
     {
         $response = $this->postJson('/api/v1/products', [
             'name' => 'Rice Bag',
             'opening_stock' => 10,
         ]);
 
-        $response->assertStatus(201)
-            ->assertJson(['data' => ['current_stock' => '10']]);
+        $response->assertStatus(422)
+            ->assertJson(['success' => false, 'message' => 'Validation failed'])
+            ->assertJsonStructure(['success', 'message', 'errors' => ['opening_stock']]);
 
-        $productId = $response->json('data.id');
+        $this->assertDatabaseCount('products', 0);
+        $this->assertDatabaseCount('stock_movements', 0);
+        $this->assertDatabaseCount('inventory_batches', 0);
+    }
 
-        // The quantity lives exclusively in stock_movements.
-        $this->assertDatabaseCount('stock_movements', 1);
-        $this->assertDatabaseHas('stock_movements', [
-            'business_id' => $this->business->id,
-            'product_id' => $productId,
-            'type' => StockMovement::TYPE_RECEIVE,
-            'created_by' => $this->user->id,
+    /**
+     * @test
+     *
+     * A zero opening stock is rejected too: the field is not part of the
+     * contract at all, whatever value it carries.
+     */
+    public function a_zero_opening_stock_is_rejected_as_well(): void
+    {
+        $response = $this->postJson('/api/v1/products', [
+            'name' => 'Rice Bag',
+            'opening_stock' => 0,
         ]);
+
+        $response->assertStatus(422)
+            ->assertJsonStructure(['success', 'message', 'errors' => ['opening_stock']]);
+
+        $this->assertDatabaseCount('products', 0);
+    }
+
+    /**
+     * @test
+     *
+     * The edit flow cannot add stock either: an update carries no quantity
+     * field, so a client that posts one changes nothing.
+     */
+    public function updating_a_product_cannot_add_stock(): void
+    {
+        $product = Product::factory()->create(['business_id' => $this->business->id]);
+
+        $response = $this->patchJson('/api/v1/products/'.$product->id, [
+            'name' => 'Rice Bag',
+            'opening_stock' => 25,
+        ]);
+
+        $response->assertStatus(200);
+
+        $this->assertDatabaseCount('stock_movements', 0);
+        $this->assertDatabaseCount('inventory_batches', 0);
+        $this->assertSame(
+            '0',
+            Quantity::format((string) StockMovement::query()
+                ->where('product_id', $product->id)
+                ->sum('quantity')),
+        );
     }
 
     /** @test */
@@ -411,19 +506,17 @@ class ProductTest extends TestCase
     }
 
     /** @test */
-    public function opening_stock_is_rejected_for_service_products(): void
+    public function a_service_product_is_created_without_any_stock(): void
     {
         $response = $this->postJson('/api/v1/products', [
             'name' => 'Haircut',
             'unit' => Product::UNIT_SERVICE,
-            'opening_stock' => 5,
         ]);
 
-        $response->assertStatus(422)
-            ->assertJsonStructure(['success', 'message', 'errors' => ['opening_stock']]);
+        $response->assertStatus(201);
 
-        $this->assertDatabaseCount('products', 0);
         $this->assertDatabaseCount('stock_movements', 0);
+        $this->assertDatabaseCount('inventory_batches', 0);
     }
 
     /** @test */

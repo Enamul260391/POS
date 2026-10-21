@@ -48,7 +48,6 @@ function formValues(overrides: Partial<ProductFormValues>): ProductFormValues {
     categoryId: 1,
     costPrice: 10,
     sellingPrice: 15,
-    openingStock: 0,
     lowStockThreshold: 5,
     ...overrides,
   };
@@ -106,6 +105,36 @@ describe("useProductStore — product input mapping", () => {
     expect(updateProductRequest).toHaveBeenCalledWith(
       11,
       expect.objectContaining({ sku: "EDIT-2" }),
+    );
+  });
+
+  it("sends no stock field on create", async () => {
+    // A product is master data. Stock enters the system through a purchase, so
+    // the create payload must not carry a quantity in any shape.
+    await useCatalogueStore.getState().createProduct(formValues({}));
+
+    const input = createProductRequest.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(input).not.toHaveProperty("openingStock");
+    expect(input).not.toHaveProperty("opening_stock");
+    expect(input).not.toHaveProperty("stock");
+  });
+
+  it("sends no stock field on update", async () => {
+    await useCatalogueStore.getState().updateProduct(11, formValues({}));
+
+    const input = updateProductRequest.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(input).not.toHaveProperty("openingStock");
+    expect(input).not.toHaveProperty("opening_stock");
+    expect(input).not.toHaveProperty("stock");
+  });
+
+  it("keeps the low-stock threshold, which is an alert level and not a quantity", async () => {
+    await useCatalogueStore
+      .getState()
+      .createProduct(formValues({ lowStockThreshold: 25 }));
+
+    expect(createProductRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ lowStockThreshold: 25 }),
     );
   });
 });
