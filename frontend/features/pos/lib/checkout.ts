@@ -1,5 +1,6 @@
 import { toApiPaymentMethod } from "@/features/pos/lib/paymentMapping";
 import type { SaleInput } from "@/features/sales/services/salesService";
+import type { CartItem as CartLine } from "@/types/cart";
 import type { CartTotals } from "@/stores/useCartStore";
 import type { PaymentMethod } from "@/types/payment";
 
@@ -104,6 +105,12 @@ export function buildSaleInput(params: {
       // invoice discount above.
       discount: line.discount,
       tax: line.taxAmount,
+      // `batch_id` is sent only when the cashier had to pick among distinct
+      // selling prices. Auto-selection and legacy lines omit it so the
+      // backend can FIFO-allocate at the confirmed unit price.
+      ...(line.batchId !== null ? { batch_id: line.batchId } : {}),
     })),
   };
 }
+
+

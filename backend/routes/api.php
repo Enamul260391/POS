@@ -302,9 +302,15 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         // Inventory batches — read-only lot/expiry allocation layer on top of
         // the stock movement ledger. Created by the purchase flow, consumed by
         // the sale/return flow (STEP 3). No create/update/delete in STEP 2.
+        // STEP 4: the list keeps its ledger capability; the per-product POS
+        // price options use the dedicated least-privilege batch read so a
+        // cashier never needs broad inventory access.
         Route::get('/inventory-batches', [InventoryBatchController::class, 'index'])
             ->middleware('can:inventory.view')
             ->name('inventory-batches.index');
+        Route::get('/inventory-batches/product/{product}/price-options', [InventoryBatchController::class, 'priceOptions'])
+            ->middleware('can:inventory.batches.view')
+            ->name('inventory-batches.price-options');
 
         // Sales — full CRUD; creation deducts ledger stock in one transaction.
         Route::get('/sales', [SaleController::class, 'index'])

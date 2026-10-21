@@ -7,7 +7,10 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Inventory\IndexInventoryBatchRequest;
 use App\Http\Resources\InventoryBatchResource;
+use App\Models\Product;
 use App\Services\InventoryBatch\InventoryBatchService;
+use App\Support\ApiResponse;
+use App\Support\Money;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -46,6 +49,33 @@ class InventoryBatchController extends Controller
             'Inventory batches retrieved successfully',
             InventoryBatchResource::class,
         );
+    }
+
+    /**
+     * STEP 4 POS price options for one product, on demand.
+     *
+     * Returns exactly one option per distinct selling price among eligible
+     * batches (`remaining_quantity > 0`, FIFO `received_date ASC, id ASC`).
+     * The frontend fetches this per product being added — never the full
+     * catalogue. An empty list means zero eligible stock: the cart addition
+     * must be blocked.
+     */
+    public function priceOptions(Request $request, string $product): JsonResponse
+    {
+        $businessId = $this->businessId($request);
+
+        $row = Product::query()
+            ->forBusiness($businessId)
+            ->whereKey((int) $product)
+            ->firstOrFail();
+
+        $eligible = $this->batches->eligibleForProduct($businessId, (int) $row->getKey());
+        $options = $this->batches->priceOptions($eligible, Money::format($row->selling_price));
+
+        return ApiResponse::success([
+            'product_id' => (int) $row->getKey(),
+            'options' => $options,
+        ], 'Batch price options retrieved successfully');
     }
 
     /**

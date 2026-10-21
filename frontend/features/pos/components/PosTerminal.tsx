@@ -4,11 +4,25 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { CartPanel } from "@/features/pos/components/CartPanel";
 import { PaymentModal } from "@/features/pos/components/PaymentModal";
+import { PriceSelectionDialog } from "@/features/pos/components/PriceSelectionDialog";
 import { ProductGrid } from "@/features/pos/components/ProductGrid";
 import { ProductSearch } from "@/features/pos/components/ProductSearch";
 import { usePosProductSearch } from "@/features/pos/hooks/usePosProductSearch";
-import { addProductToSale, sellableProductsOf } from "@/features/pos/lib/catalog";
+import {
+  addChosenPriceToSale,
+  addProductToSaleWithPriceOptions,
+  describeCartFailure,
+  sellableProductsOf,
+  type AddToSaleOutcome,
+} from "@/features/pos/lib/catalog";
+import type { PriceOption } from "@/types/priceOptions";
 import type { Product } from "@/types/product";
+
+interface PendingSelection {
+  product: Product;
+  options: PriceOption[];
+  quantity: number;
+}
 
 /**
  * The POS terminal — composition only (Phase 3, Phase 25).
@@ -51,6 +65,10 @@ import type { Product } from "@/types/product";
 export function PosTerminal() {
   const [query, setQuery] = useState("");
   const [isPaymentOpen, setIsPaymentOpen] = useState(false);
+  const [pendingSelection, setPendingSelection] = useState<
+    PendingSelection | null
+  >(null);
+  const [addMessage, setAddMessage] = useState<string | null>(null);
 
   // Server-side search. Empty query → no request and no products.
   const { products, isSearching, error, term } = usePosProductSearch(query);
@@ -70,9 +88,43 @@ export function PosTerminal() {
   const hasQuery = term !== "";
   const firstResult = hasQuery ? (sellableProducts[0] ?? null) : null;
 
-  const handleAdd = useCallback((product: Product) => {
-    addProductToSale(product);
+  const handleAdd = useCallback(async (product: Product): Promise<AddToSaleOutcome> => {
+    const outcome = await addProductToSaleWithPriceOptions(
+      product,
+      1,
+      (selected, options, quantity) => {
+        setPendingSelection({ product: selected, options, quantity });
+      },
+    );
+
+    if (outcome.ok) {
+      setQuery("");
+      setAddMessage(null);
+      return outcome;
+    }
+
+    if (outcome.message !== describeCartFailure("price-selection-required")) {
+      setAddMessage(outcome.message);
+    }
+    return outcome;
   }, []);
+
+  const confirmPriceSelection = (option: PriceOption) => {
+    if (pendingSelection === null) {
+      return;
+    }
+
+    const { product, quantity } = pendingSelection;
+    const outcome = addChosenPriceToSale(product, option, quantity, option.batch_id);
+    if (!outcome.ok) {
+      setAddMessage(outcome.message);
+      return;
+    }
+
+    setPendingSelection(null);
+    setQuery("");
+    setAddMessage(null);
+  };
 
   useEffect(() => {
     if (isPaymentOpen) {
@@ -104,10 +156,19 @@ export function PosTerminal() {
           firstResult={firstResult}
           searchRef={searchRef}
           barcodeRef={barcodeRef}
+          onAdd={handleAdd}
+          onPriceSelect={(product, options, quantity) => {
+            setPendingSelection({ product, options, quantity });
+          }}
         />
         {error !== null && (
           <p role="alert" className="text-xs text-destructive">
             {error}
+          </p>
+        )}
+        {addMessage !== null && (
+          <p role="alert" className="text-xs text-destructive">
+            {addMessage}
           </p>
         )}
         {hasQuery && (
@@ -121,6 +182,20 @@ export function PosTerminal() {
 
       <CartPanel onCheckout={() => setIsPaymentOpen(true)} />
       <PaymentModal open={isPaymentOpen} onOpenChange={setIsPaymentOpen} />
+      {pendingSelection !== null && (
+        <PriceSelectionDialog
+          open={true}
+          onOpenChange={(open) => {
+            if (!open) {
+              setPendingSelection(null);
+            }
+          }}
+          productName={pendingSelection.product.name}
+          options={pendingSelection.options}
+          quantity={pendingSelection.quantity}
+          onConfirm={confirmPriceSelection}
+        />
+      )}
     </div>
   );
 }

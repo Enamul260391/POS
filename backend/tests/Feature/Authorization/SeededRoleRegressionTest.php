@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Authorization;
 
 use App\Models\Business;
+use App\Models\Product;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\Permission\PermissionService;
@@ -173,6 +174,42 @@ class SeededRoleRegressionTest extends TestCase
         );
     }
 
+    /**
+     * @test
+     *
+     * STEP 4 introduced `inventory.batches.view` — the least-privilege read the
+     * POS price selector needs. It is deliberately narrower than the ledger
+     * read: a till may look up the selling prices of a product's eligible
+     * batches without ever seeing the whole batch list.
+     *
+     * The grant follows the till, so the role matrix keeps its shape: the
+     * manager and the salesman get the narrow read, the accountant — who works
+     * no till and creates no sale — gets neither read, and the manager, which
+     * already holds the broad `inventory.view`, keeps that too.
+     */
+    public function the_batch_price_read_is_granted_to_the_till_roles_only(): void
+    {
+        $business = Business::factory()->create();
+        $this->seedRoles();
+        $product = Product::factory()->create(['business_id' => $business->id]);
+
+        // The manager manages the shop and already holds the ledger read.
+        $this->actingAsSeededRole($business, 'manager');
+        $this->getJson('/api/v1/inventory-batches/product/'.$product->id.'/price-options')->assertStatus(200);
+        $this->getJson('/api/v1/inventory-batches')->assertStatus(200);
+
+        // The salesman is the till-facing role: the narrow batch read is
+        // exactly what it needs, and the broad ledger read stays out of reach.
+        $this->actingAsSeededRole($business, 'salesman');
+        $this->getJson('/api/v1/inventory-batches/product/'.$product->id.'/price-options')->assertStatus(200);
+        $this->getJson('/api/v1/inventory-batches')->assertStatus(403);
+
+        // The accountant raises no sale, so it reads no batch at all.
+        $this->actingAsSeededRole($business, 'accountant');
+        $this->getJson('/api/v1/inventory-batches/product/'.$product->id.'/price-options')->assertStatus(403);
+        $this->getJson('/api/v1/inventory-batches')->assertStatus(403);
+    }
+
     /** @test */
     public function accountant_may_not_create_sales(): void
     {
@@ -200,6 +237,12 @@ class SeededRoleRegressionTest extends TestCase
      *
      * `admin` is the complete canonical capability set by definition. The other
      * three are pinned to the counts verified against the seeder's grants.
+     *
+     * STEP 4 added `inventory.batches.view` — the least-privilege read the POS
+     * price selector needs — and granted it to the two roles that work the till
+     * and manage the shop: `manager` and `salesman`. The `accountant` runs no
+     * POS and creates no sale, so it is deliberately left out and its count is
+     * unchanged.
      */
     public function the_seeded_roles_resolve_to_their_documented_capability_counts(): void
     {
@@ -214,8 +257,8 @@ class SeededRoleRegressionTest extends TestCase
         }
 
         $this->assertSame(count(PermissionService::ALL_CAPABILITIES), $counts['admin']);
-        $this->assertSame(44, $counts['manager']);
-        $this->assertSame(23, $counts['salesman']);
+        $this->assertSame(45, $counts['manager']);
+        $this->assertSame(24, $counts['salesman']);
         $this->assertSame(18, $counts['accountant']);
     }
 

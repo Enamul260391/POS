@@ -14,6 +14,7 @@ use App\Models\StockMovement;
 use App\Services\CashRegister\CashRegisterService;
 use App\Services\Customer\CustomerLedgerService;
 use App\Services\Inventory\InventoryService;
+use App\Services\InventoryBatch\InventoryBatchService;
 use App\Support\Money;
 use App\Support\Quantity;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -72,6 +73,7 @@ final class SaleReturnService
 
     public function __construct(
         private readonly InventoryService $inventory,
+        private readonly InventoryBatchService $batches,
         private readonly CashRegisterService $cashRegisters,
         private readonly CustomerLedgerService $ledger,
     ) {}
@@ -195,7 +197,20 @@ final class SaleReturnService
                 ]);
                 $product = $line['sale_item']->product;
                 if ($product !== null && $product->tracksStock()) {
-                    $this->inventory->record($product, $userId, StockMovement::TYPE_SALE_RETURN, Quantity::format($line['quantity']), 'Sale return #'.$ret->getKey(), SaleReturn::class, $ret->getKey());
+                    // The units go back to the very batch the sale line was
+                    // taken from, and the inbound movement is tagged with that
+                    // same batch. The batch id is read from the original sale
+                    // item, never from the request, so a client cannot redirect
+                    // a return into a different lot.
+                    $batchId = $line['sale_item']->batch_id !== null
+                        ? (int) $line['sale_item']->batch_id
+                        : null;
+
+                    if ($batchId !== null) {
+                        $this->batches->restore($businessId, $batchId, $line['quantity']);
+                    }
+
+                    $this->inventory->record($product, $userId, StockMovement::TYPE_SALE_RETURN, Quantity::format($line['quantity']), 'Sale return #'.$ret->getKey(), SaleReturn::class, $ret->getKey(), $batchId);
                 }
             }
 

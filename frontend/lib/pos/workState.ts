@@ -229,6 +229,9 @@ export function restoreWorkState(state: PersistedWorkState): CartItem[] {
     const result = store.addProduct(snapshot as unknown as Product, {
       quantity: line.quantity,
       unitPrice: line.unitPrice,
+      batchId: typeof line.batchId === "number" ? line.batchId : null,
+      priceAvailableQuantity:
+        typeof line.priceAvailableQuantity === "number" ? line.priceAvailableQuantity : null,
       note: line.note,
     });
     if (result.ok) {

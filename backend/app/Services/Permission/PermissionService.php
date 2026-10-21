@@ -148,6 +148,16 @@ final class PermissionService
      */
     public const INVENTORY_ADJUST = 'inventory.adjust';
 
+    /**
+     * Read inventory batches (POS price options).
+     *
+     * Least-privilege read for cashiers: fetching eligible batches and
+     * distinct selling prices must not require the full ledger read
+     * (`inventory.view`) or the adjustment write. STEP 4 introduces this
+     * capability and grants it alongside sales capabilities.
+     */
+    public const INVENTORY_BATCHES_VIEW = 'inventory.batches.view';
+
     /** Read customers. */
     public const CUSTOMERS_VIEW = 'customers.view';
 
@@ -359,6 +369,7 @@ final class PermissionService
         self::PRODUCTS_DELETE => [self::PRODUCTS_DELETE],
 
         self::INVENTORY_VIEW => [self::INVENTORY_VIEW],
+        self::INVENTORY_BATCHES_VIEW => [self::INVENTORY_BATCHES_VIEW],
         self::INVENTORY_MANAGE => [self::INVENTORY_ADJUST],
 
         self::CUSTOMERS_VIEW => [self::CUSTOMERS_VIEW],
@@ -464,6 +475,7 @@ final class PermissionService
         self::PRODUCTS_UPDATE,
         self::PRODUCTS_DELETE,
         self::INVENTORY_VIEW,
+        self::INVENTORY_BATCHES_VIEW,
         self::INVENTORY_MANAGE,
         self::CUSTOMERS_VIEW,
         self::CUSTOMERS_CREATE,

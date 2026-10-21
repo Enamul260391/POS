@@ -1105,14 +1105,32 @@ class CoarseManagePermissionExpansionMigrationTest extends TestCase
     /** @test */
     public function it_does_nothing_when_the_permission_catalogue_is_empty(): void
     {
-        // No seeder at all: the catalogue has no rows, so there is nothing to
-        // resolve and nothing to expand.
+        // No seeder at all: the catalogue holds no *coarse* row, so there is
+        // nothing to resolve and nothing to expand.
+        //
+        // The catalogue is not necessarily empty of *fine-grained* rows any more:
+        // STEP 4 added `inventory.batches.view`, whose own migration inserts
+        // that permission row. The expansion only ever acts on coarse rows, so
+        // what matters is that the catalogue holds none — and that the
+        // expansion leaves the catalogue exactly as it found it, whatever it
+        // holds.
+        $this->assertSame(
+            [],
+            DB::table('permissions')->whereIn('slug', self::COARSE_SLUGS)->pluck('slug')->all(),
+            'The catalogue must hold no coarse row for the expansion to have anything to expand.',
+        );
+
+        $permissionsBefore = DB::table('permissions')->count();
         $before = DB::table('permission_role')->count();
 
         $this->runMigration();
 
         $this->assertSame($before, DB::table('permission_role')->count());
-        $this->assertSame(0, DB::table('permissions')->count());
+        $this->assertSame(
+            $permissionsBefore,
+            DB::table('permissions')->count(),
+            'The expansion must never create a permission row.',
+        );
     }
 
     // ------------------------------------------------------------------

@@ -68,6 +68,12 @@ export interface SaleItemInput {
   quantity: number;
   /** Defaults to the product's selling price on the server when omitted. */
   unitPrice?: number | null;
+  /**
+   * Batch row the line was allocated from. `null` means the automatic
+   * price selection applied (the backend splits across batches with FIFO).
+   * Omitted entirely when the frontend had no batch allocation.
+   */
+  batch_id?: number | null;
   /** Absolute discount for this line. */
   discount?: number | null;
   /** Tax amount for this line (per-product VAT from the cart). */
@@ -191,6 +197,7 @@ export async function createSale(input: SaleInput): Promise<Sale> {
       unit_price: item.unitPrice ?? null,
       discount: item.discount ?? null,
       tax: item.tax ?? null,
+      ...(item.batch_id != null ? { batch_id: item.batch_id } : {}),
     })),
   });
 

@@ -4,7 +4,12 @@ import { useState, type KeyboardEvent, type RefObject } from "react";
 import { Barcode, Search } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
-import { addProductToSale, addScannedBarcode } from "@/features/pos/lib/catalog";
+import {
+  addScannedBarcode,
+  describeCartFailure,
+  type AddToSaleOutcome,
+} from "@/features/pos/lib/catalog";
+import type { PriceOption } from "@/types/priceOptions";
 import type { Product } from "@/types/product";
 import { cn } from "cn";
 
@@ -14,8 +19,12 @@ interface ProductSearchProps {
   onQueryChange: (query: string) => void;
   /** Top result of the current filter: Enter in search adds it directly. */
   firstResult: Product | null;
+  /** Adds the top result to the cart (handles price selection async). */
+  onAdd: (product: Product) => Promise<AddToSaleOutcome>;
   searchRef: RefObject<HTMLInputElement | null>;
   barcodeRef: RefObject<HTMLInputElement | null>;
+  /** Opens the price selector when a scanned product has several prices. */
+  onPriceSelect?: (product: Product, options: PriceOption[], quantity: number) => void;
 }
 
 interface Feedback {
@@ -42,14 +51,16 @@ export function ProductSearch({
   query,
   onQueryChange,
   firstResult,
+  onAdd,
   searchRef,
   barcodeRef,
+  onPriceSelect,
 }: ProductSearchProps) {
   const [scanText, setScanText] = useState("");
   const [isScanning, setIsScanning] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
 
-  const handleSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+  const handleSearchKeyDown = async (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Escape") {
       onQueryChange("");
       setFeedback(null);
@@ -66,14 +77,14 @@ export function ProductSearch({
       setFeedback({ tone: "error", text: "No matching product." });
       return;
     }
-    const outcome = addProductToSale(firstResult);
-    setFeedback(
-      outcome.ok
-        ? { tone: "success", text: `Added ${outcome.product.name}.` }
-        : { tone: "error", text: outcome.message },
-    );
+    const outcome = await onAdd(firstResult);
     if (outcome.ok) {
+      setFeedback({ tone: "success", text: `Added ${firstResult.name}.` });
       onQueryChange("");
+      return;
+    }
+    if (outcome.message !== describeCartFailure("price-selection-required")) {
+      setFeedback({ tone: "error", text: outcome.message });
     }
   };
 
@@ -84,7 +95,7 @@ export function ProductSearch({
     event.preventDefault();
     setIsScanning(true);
     try {
-      const outcome = await addScannedBarcode(scanText);
+      const outcome = await addScannedBarcode(scanText, onPriceSelect);
       setFeedback(
         outcome.ok
           ? { tone: "success", text: `Added ${outcome.product.name}.` }

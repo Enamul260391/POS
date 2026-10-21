@@ -8,6 +8,7 @@ use App\Models\Business;
 use App\Models\Permission;
 use App\Models\User;
 use App\Models\UserPermission;
+use App\Providers\AppServiceProvider;
 use App\Services\Permission\PermissionService;
 use App\Services\UserPermission\UserPermissionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -151,7 +152,7 @@ class AuthorizationSecurityAuditTest extends TestCase
      * @test
      *
      * The tenant route surface and the tenant capability table agree exactly —
-     * 55 each, no capability that nothing routes, no route capability nothing
+     * 56 each, no capability that nothing routes, no route capability nothing
      * declares.
      *
      * Platform routes are excluded for the same reason as above: the five
@@ -162,6 +163,13 @@ class AuthorizationSecurityAuditTest extends TestCase
      * Asserted as an equality of two sets rather than as two counts, so a
      * capability added to `PermissionService` without a route (and therefore
      * without a gate check anywhere) fails here.
+     *
+     * The count itself is the second line of defence: the set equality above
+     * already proves the two sides agree, so the number only pins *how many*
+     * capabilities the tenant surface has, and it has to be moved whenever a
+     * capability is legitimately added. STEP 4 added
+     * `inventory.batches.view` (the least-privilege read the POS price
+     * selector needs), which took the contract from 55 to 56.
      */
     public function every_capability_is_routed_and_every_route_capability_is_declared(): void
     {
@@ -172,7 +180,7 @@ class AuthorizationSecurityAuditTest extends TestCase
         sort($expected);
 
         $this->assertSame($expected, $routed);
-        $this->assertCount(55, $routed, 'The 55-capability route contract must remain intact.');
+        $this->assertCount(56, $routed, 'The 56-capability route contract must remain intact.');
     }
 
     /**
@@ -187,7 +195,7 @@ class AuthorizationSecurityAuditTest extends TestCase
     public function platform_routes_use_only_declared_platform_abilities(): void
     {
         $routed = $this->livePlatformRouteCapabilities();
-        $declared = \App\Providers\AppServiceProvider::PLATFORM_ABILITIES;
+        $declared = AppServiceProvider::PLATFORM_ABILITIES;
 
         foreach (array_keys($routed) as $capability) {
             $this->assertContains(

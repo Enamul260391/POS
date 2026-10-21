@@ -9,7 +9,7 @@ import type { Product } from "@/types/product";
 interface ProductGridProps {
   /** Products matching the current search. */
   products: readonly Product[];
-  /** Adds a tapped product to the cart (guard lives in `addProductToSale`). */
+  /** Adds a tapped product to the cart (guard lives in the catalog helpers). */
   onAdd: (product: Product) => void;
   /** `true` while a product search request is in flight. */
   isLoading?: boolean;

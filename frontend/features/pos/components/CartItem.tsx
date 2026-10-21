@@ -54,8 +54,13 @@ export function CartItem({ line, totals }: CartItemProps) {
   );
   const step = quantityStep(line.product.unit);
   const remaining = product === undefined ? null : remainingStock(product, inCartQuantity);
+  const remainingAtPrice =
+    line.priceAvailableQuantity === null
+      ? null
+      : Math.max(0, line.priceAvailableQuantity - line.quantity);
   const canIncrease =
-    product === undefined ? true : canAddProduct(product, inCartQuantity, step);
+    (product === undefined ? true : canAddProduct(product, inCartQuantity, step)) &&
+    (remainingAtPrice === null || remainingAtPrice >= step);
 
   // Store setters return what they actually stored — commit writes that back.
   const quantityField = useCommittedNumber(line.quantity, (next) => {

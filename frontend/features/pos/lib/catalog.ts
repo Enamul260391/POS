@@ -1,7 +1,14 @@
-import { useCartStore, type CartActionFailure } from "@/stores/useCartStore";
+import { roundMoney, useCartStore, type CartActionFailure } from "@/stores/useCartStore";
 import { useCatalogueStore } from "@/stores/useProductStore";
 import type { CartItem } from "@/types/cart";
 import type { Product } from "@/types/product";
+
+import {
+  INSUFFICIENT_BATCH_STOCK_MESSAGE,
+  eligiblePriceOptions,
+  type PriceOption,
+} from "@/types/priceOptions";
+import { getPriceOptions } from "../services/priceOptionsService";
 
 import { findProductByCode } from "../../products/services/productService";
 
@@ -58,6 +65,21 @@ export function cartQuantityOf(items: readonly CartItem[], productId: number): n
   let total = 0;
   for (const item of items) {
     if (item.productId === productId) {
+      total += item.quantity;
+    }
+  }
+  return total;
+}
+
+/** Quantity already in the cart for one product at one selling price. */
+export function cartQuantityAtPrice(
+  items: readonly CartItem[],
+  productId: number,
+  unitPrice: number,
+): number {
+  let total = 0;
+  for (const item of items) {
+    if (item.productId === productId && item.unitPrice === unitPrice) {
       total += item.quantity;
     }
   }
@@ -133,6 +155,10 @@ export function describeCartFailure(reason: CartActionFailure): string {
       return "Product lookup failed. Try again.";
     case "item-not-found":
       return "That cart line no longer exists.";
+    case "price-selection-required":
+      return "This product has multiple prices. Pick one before adding.";
+    case "insufficient-batch-stock":
+      return INSUFFICIENT_BATCH_STOCK_MESSAGE;
   }
 }
 
@@ -177,6 +203,124 @@ export function addProductToSale(
 }
 
 /**
+ * Adds a product while the POS resolves its batch price options first.
+ *
+ * Outcomes matching the backend `resolveBatchLine` contract:
+ *
+ *   - untracked (service)  → no batches, add at the product selling price
+ *   - zero ledger stock    → blocked before any request (`canAddProduct`)
+ *   - no eligible options  → legacy product with ledger stock, no `batch_id`
+ *   - one distinct price   → auto-selected, no selector, no `batch_id`
+ *   - several distinct     → the caller must let the cashier choose first
+ */
+export async function addProductToSaleWithPriceOptions(
+  product: Product | null | undefined,
+  quantity = 1,
+  onSelect?: (product: Product, options: PriceOption[], quantity: number) => void,
+): Promise<AddToSaleOutcome> {
+  if (product === null || product === undefined) {
+    return { ok: false, message: describeCartFailure("invalid-product") };
+  }
+  if (product.status !== "active") {
+    return { ok: false, message: describeCartFailure("product-not-active") };
+  }
+
+  if (!isStockTracked(product)) {
+    return addProductToSale(product, quantity);
+  }
+
+  const store = useCartStore.getState();
+  const inCartQuantity = cartQuantityOf(store.items, product.id);
+  if (!canAddProduct(product, inCartQuantity, quantity)) {
+    const remaining = remainingStock(product, inCartQuantity) ?? 0;
+    return {
+      ok: false,
+      message:
+        remaining <= 0
+          ? `${product.name} is out of stock.`
+          : `Only ${remaining} left in stock.`,
+    };
+  }
+
+  let options: PriceOption[];
+  try {
+    options = eligiblePriceOptions(await getPriceOptions(product.id));
+  } catch (error) {
+    const message =
+      typeof error === "object" &&
+      error !== null &&
+      "message" in error &&
+      typeof (error as { message: unknown }).message === "string" &&
+      (error as { message: string }).message.trim() !== ""
+        ? (error as { message: string }).message
+        : describeCartFailure("lookup-failed");
+    return { ok: false, message };
+  }
+
+  if (options.length === 0) {
+    // Empty options with remaining ledger stock is the legacy path: the
+    // product has no batch history. Depleted-history leftovers are refused
+    // at checkout with the backend's 409 wording.
+    return addProductToSale(product, quantity);
+  }
+
+  if (options.length === 1) {
+    return addChosenPriceToSale(product, options[0], quantity, null);
+  }
+
+  onSelect?.(product, options, quantity);
+  return { ok: false, message: describeCartFailure("price-selection-required") };
+}
+
+/**
+ * Adds at a cashier-chosen (or auto-selected) selling price.
+ *
+ * `batchId` is `null` for auto-selection so the backend FIFO-allocates within
+ * the confirmed price. An explicit `batch_id` is sent only when several
+ * distinct prices forced a choice.
+ */
+export function addChosenPriceToSale(
+  product: Product,
+  option: PriceOption,
+  quantity = 1,
+  batchId: number | null = option.batch_id,
+): AddToSaleOutcome {
+  const unitPrice = roundMoney(Number(option.selling_price));
+  const available = Number(option.available_quantity);
+  const store = useCartStore.getState();
+  const inCartQuantity = cartQuantityOf(store.items, product.id);
+  if (!canAddProduct(product, inCartQuantity, quantity)) {
+    const remaining = remainingStock(product, inCartQuantity) ?? 0;
+    return {
+      ok: false,
+      message:
+        remaining <= 0
+          ? `${product.name} is out of stock.`
+          : `Only ${remaining} left in stock.`,
+    };
+  }
+
+  if (!Number.isFinite(unitPrice) || unitPrice < 0 || !Number.isFinite(available)) {
+    return { ok: false, message: describeCartFailure("invalid-unit-price") };
+  }
+
+  const inCartAtPrice = cartQuantityAtPrice(store.items, product.id, unitPrice);
+  if (inCartAtPrice + quantity > available) {
+    return { ok: false, message: INSUFFICIENT_BATCH_STOCK_MESSAGE };
+  }
+
+  const result = store.addProduct(product, {
+    quantity,
+    unitPrice,
+    batchId,
+    priceAvailableQuantity: available,
+  });
+  return result.ok
+    ? { ok: true, product }
+    : { ok: false, message: describeCartFailure(result.reason) };
+}
+
+/**
  * Barcode scanner entry point: resolves the code, checks stock, then lets the
  * cart store mutate through its injected lookup.
  *
@@ -190,7 +334,10 @@ export function addProductToSale(
  * the query is what makes an inactive product report as "not found" here,
  * rather than being resolved and then rejected.
  */
-export async function addScannedBarcode(barcode: string): Promise<AddToSaleOutcome> {
+export async function addScannedBarcode(
+  barcode: string,
+  onSelect?: (product: Product, options: PriceOption[], quantity: number) => void,
+): Promise<AddToSaleOutcome> {
   const code = barcode.trim();
   if (code === "") {
     return { ok: false, message: describeCartFailure("invalid-barcode") };
@@ -228,8 +375,5 @@ export async function addScannedBarcode(barcode: string): Promise<AddToSaleOutco
     };
   }
 
-  const result = store.addProduct(product, { quantity: 1 });
-  return result.ok
-    ? { ok: true, product }
-    : { ok: false, message: describeCartFailure(result.reason) };
+  return addProductToSaleWithPriceOptions(product, 1, onSelect);
 }

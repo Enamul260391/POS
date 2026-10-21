@@ -353,7 +353,7 @@ the action rather than the resource:
 | `users.roles.update` | `users.roles.update` |
 | `settings.view` / `.update` | same slug |
 | `categories.*`, `products.*`, `customers.*`, `suppliers.*`, `purchases.*` | same slug |
-| `inventory.view` | `inventory.view` |
+| `inventory.view`, `inventory.batches.view` | same slug |
 | **`inventory.manage`** | **`inventory.adjust`** (stock adjustment) |
 | `sales.*`, `sale_returns.*`, `expenses.*`, `expense_categories.*` | same slug |
 | `sales.payments.create` | `sales.payments.create` |
@@ -397,10 +397,17 @@ permissions each role receives:
 
 | Role | Effective capabilities | Description |
 | ---- | ---------------------- | ----------- |
-| `admin` | 53 — the entire catalogue | "Full access to all features" |
-| `manager` | 42 — products, categories, inventory (incl. `inventory.adjust`), sales (incl. `sales.payments.create`), sale returns, purchases, customers, suppliers, expenses, expense categories, cash registers (incl. `cash_registers.transactions.create`), `reports.view` | "Manage products, sales, purchases, and reports" |
-| `salesman` | 21 — products, categories, sales (incl. `sales.payments.create`), customers, cash registers (incl. `cash_registers.transactions.create`) | "Handle sales and customer management" |
+| `admin` | 56 — the entire catalogue | "Full access to all features" |
+| `manager` | 45 — products, categories, inventory (incl. `inventory.adjust`, `inventory.batches.view`), sales (incl. `sales.payments.create`), sale returns, purchases, customers, suppliers, expenses, expense categories, cash registers (incl. `cash_registers.transactions.create`), `reports.view` | "Manage products, sales, purchases, and reports" |
+| `salesman` | 24 — products, categories, sales (incl. `sales.payments.create`), `inventory.batches.view`, customers, cash registers (incl. `cash_registers.transactions.create`) | "Handle sales and customer management" |
 | `accountant` | 18 — purchases, suppliers, expenses, expense categories, `sales.payments.create`, `reports.view` | "Manage purchases, expenses, and payments" |
+
+`inventory.batches.view` is a narrow read the POS price selector needs: the
+distinct selling prices of a product's eligible batches. It is deliberately
+*not* the ledger read (`inventory.view`) and not the adjustment write
+(`inventory.adjust`), so a till can look up a price without seeing the whole
+batch list. It follows the till: the manager and the salesman hold it, the
+accountant — which creates no sale and works no till — does not.
 
 The accountant deliberately does **not** receive `sales.create`: it may take
 payment against a sale without being able to create one.
@@ -431,6 +438,8 @@ that order. `GET`/list/detail maps to `*.view`, `POST` to `*.create`, `PUT`/
 | | `GET` / `PUT` / `DELETE` | `/products/{id}` | `products.view` / `.update` / `.delete` |
 | Inventory | `GET` | `/stock-movements` | `inventory.view` |
 | | `POST` | `/products/{id}/stock-adjustments` | `inventory.manage` |
+| Inventory batches | `GET` | `/inventory-batches` | `inventory.view` |
+| | `GET` | `/inventory-batches/product/{id}/price-options` | `inventory.batches.view` |
 | Customers | `GET` / `POST` | `/customers` | `customers.view` / `.create` |
 | | `GET` / `PUT` / `DELETE` | `/customers/{id}` | `customers.view` / `.update` / `.delete` |
 | Suppliers | `GET` / `POST` | `/suppliers` | `suppliers.view` / `.create` |

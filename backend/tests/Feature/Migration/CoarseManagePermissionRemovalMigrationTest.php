@@ -1306,12 +1306,19 @@ class CoarseManagePermissionRemovalMigrationTest extends TestCase
         // `<resource>.manage` row ever implied them. A pre-expansion install
         // genuinely could not hold them, and the migration must not invent the
         // grants retroactively — that is the seeder's additive job.
+        //
+        // `inventory.batches.view` is excluded for that same reason: STEP 4
+        // introduced it as a brand-new least-privilege read, long after the
+        // coarse rows had stopped implying anything. No `<resource>.manage` row
+        // ever stood for it, so a pre-expansion installation could not hold it
+        // either, and the "before" set must not pretend otherwise.
         $expected = array_values(array_diff(
             PermissionService::ALL_CAPABILITIES,
             [
                 PermissionService::REPORTS_VIEW,
                 PermissionService::CASH_REGISTERS_TRANSACTIONS_UPDATE,
                 PermissionService::CASH_REGISTERS_TRANSACTIONS_DELETE,
+                PermissionService::INVENTORY_BATCHES_VIEW,
             ],
         ));
         sort($expected);
@@ -1357,7 +1364,11 @@ class CoarseManagePermissionRemovalMigrationTest extends TestCase
 
         $this->assertSame($before, DB::table('permissions')->count());
 
-        $expected = ['admin' => count(PermissionService::catalogueSlugs()), 'manager' => 44, 'salesman' => 23, 'accountant' => 18];
+        // The seeded matrix, measured as effective capabilities. STEP 4 added
+        // `inventory.batches.view` to the two till-facing roles — the manager
+        // and the salesman — so both are one higher than before; the accountant
+        // works no till and creates no sale, so it is unchanged.
+        $expected = ['admin' => count(PermissionService::catalogueSlugs()), 'manager' => 45, 'salesman' => 24, 'accountant' => 18];
 
         foreach ($expected as $slug => $count) {
             $role = Role::query()->where('business_id', $business->id)->where('slug', $slug)->firstOrFail();

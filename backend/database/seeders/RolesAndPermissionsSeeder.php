@@ -112,6 +112,8 @@ class RolesAndPermissionsSeeder extends Seeder
                 // Sales, including recording a payment against one.
                 'sales.view', 'sales.create', 'sales.update', 'sales.delete',
                 'sales.payments.create',
+                // POS batch price options (least-privilege batch read).
+                'inventory.batches.view',
                 // Sale returns.
                 'sale_returns.view', 'sale_returns.create',
                 // Purchases and suppliers.
@@ -147,6 +149,8 @@ class RolesAndPermissionsSeeder extends Seeder
                 // Sales, including recording a payment against one.
                 'sales.view', 'sales.create', 'sales.update', 'sales.delete',
                 'sales.payments.create',
+                // POS batch price options (least-privilege batch read).
+                'inventory.batches.view',
                 // Customers.
                 'customers.view', 'customers.create', 'customers.update', 'customers.delete',
                 // Cash drawer: reading, opening, closing, manual movements —

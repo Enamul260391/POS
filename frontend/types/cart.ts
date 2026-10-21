@@ -48,6 +48,21 @@ export interface CartItem {
   quantity: number;
   /** Price used for this line: `product.sellingPrice` unless overridden. */
   unitPrice: number;
+  /**
+   * Batch row the line was allocated from, when the sale needs an explicit
+   * batch selection (multiple distinct selling prices). `null` means the
+   * automatic price selection applied: the backend splits the line across
+   * batches with FIFO at the server-confirmed price, so no single batch owns
+   * those units on the client.
+   */
+  batchId: number | null;
+  /**
+   * Combined units still sellable at this line's selling price, taken from
+   * the price-options response when the line was added. `null` means the
+   * product is legacy (no batch history) or untracked, so only ledger stock
+   * applies.
+   */
+  priceAvailableQuantity: number | null;
   /** Absolute line discount in currency units. */
   discount: number;
   /** Free text note for the line, e.g. "no sugar" or "gift wrap". */

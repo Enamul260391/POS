@@ -266,6 +266,13 @@ export interface CartLineTotals {
   productId: number;
   quantity: number;
   unitPrice: number;
+  /**
+   * Batch row the line was allocated from, when an explicit batch was chosen.
+   * `null` means the automatic price selection applied (the backend splits
+   * across batches with FIFO at the server-confirmed price) — no `batch_id`
+   * is sent to the sale endpoint.
+   */
+  batchId: number | null;
   /** Amount before any discount or tax. */
   gross: number;
   /** Item wise discount applied to this line. */
@@ -378,6 +385,7 @@ export function calculateCartTotals(
       productId: draft.item.productId,
       quantity: draft.item.quantity,
       unitPrice: draft.item.unitPrice,
+      batchId: draft.item.batchId,
       gross: fromMinorUnits(draft.grossMinorUnits),
       discount: fromMinorUnits(draft.discountMinorUnits),
       globalDiscountShare: fromMinorUnits(shareMinorUnits),
@@ -418,7 +426,9 @@ export type CartActionFailure =
   | "invalid-barcode"
   | "product-not-found"
   | "lookup-failed"
-  | "item-not-found";
+  | "item-not-found"
+  | "price-selection-required"
+  | "insufficient-batch-stock";
 
 /**
  * Outcome of a mutating cart action.
@@ -437,6 +447,18 @@ export interface AddProductOptions {
   quantity?: number;
   /** Price override for this line; defaults to `product.sellingPrice`. */
   unitPrice?: number;
+  /**
+   * Batch row the line was allocated from. `null` means the automatic
+   * price selection applied (the backend splits the line across batches with
+   * FIFO at the server-confirmed price) — no single batch owns these units
+   * on the client, so no `batch_id` is sent to the sale endpoint.
+   */
+  batchId?: number | null;
+  /**
+   * Combined units available at this selling price (from price-options).
+   * `null`/omitted means the line is not batch-price gated.
+   */
+  priceAvailableQuantity?: number | null;
   /** Line note printed with the sale, e.g. "no sugar". */
   note?: string | null;
 }
@@ -579,6 +601,10 @@ export const useCartStore = create<CartStore>()((set, get) => ({
       return { ok: false, reason: "invalid-unit-price" };
     }
 
+    const batchId = options.batchId ?? null;
+    const priceAvailableQuantity =
+      options.priceAvailableQuantity === undefined ? null : options.priceAvailableQuantity;
+
     const note = typeof options.note === "string" && options.note.trim() ? options.note.trim() : null;
     const existing = get().items.find(
       (item) => item.productId === snapshot.id && item.unitPrice === unitPrice,
@@ -589,6 +615,11 @@ export const useCartStore = create<CartStore>()((set, get) => ({
 
       if (mergedQuantity === null) {
         return { ok: false, reason: "invalid-quantity" };
+      }
+
+      const available = existing.priceAvailableQuantity ?? priceAvailableQuantity;
+      if (available !== null && mergedQuantity > available) {
+        return { ok: false, reason: "insufficient-batch-stock" };
       }
 
       set((state) => ({
@@ -607,12 +638,18 @@ export const useCartStore = create<CartStore>()((set, get) => ({
       return { ok: true, itemIds: [existing.id], removed: false };
     }
 
+    if (priceAvailableQuantity !== null && quantity > priceAvailableQuantity) {
+      return { ok: false, reason: "insufficient-batch-stock" };
+    }
+
     const item: CartItem = {
       id: createItemId(),
       productId: snapshot.id,
       product: snapshot,
       quantity,
       unitPrice,
+      batchId,
+      priceAvailableQuantity,
       discount: 0,
       note,
     };
@@ -706,6 +743,10 @@ export const useCartStore = create<CartStore>()((set, get) => ({
       return { ok: false, reason: "invalid-quantity" };
     }
 
+    if (item.priceAvailableQuantity !== null && quantity > item.priceAvailableQuantity) {
+      return { ok: false, reason: "insufficient-batch-stock" };
+    }
+
     set((state) => ({
       items: state.items.map((candidate) =>
         candidate.id === itemId ? { ...candidate, quantity } : candidate,
@@ -782,6 +823,10 @@ export const useCartStore = create<CartStore>()((set, get) => ({
     if (normalized === null) {
       set((state) => ({ items: state.items.filter((candidate) => candidate.id !== itemId) }));
       return { ok: true, itemIds: [itemId], removed: true };
+    }
+
+    if (item.priceAvailableQuantity !== null && normalized > item.priceAvailableQuantity) {
+      return { ok: false, reason: "insufficient-batch-stock" };
     }
 
     set((state) => ({
