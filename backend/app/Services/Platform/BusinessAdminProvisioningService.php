@@ -80,10 +80,10 @@ final class BusinessAdminProvisioningService
             // and the admin-existence check below then observes the committed
             // admin. The soft-delete scope still excludes deleted businesses,
             // so a missing/deleted business fails 404 exactly as before.
-            Business::query()->whereKey($businessId)->lockForUpdate()->firstOrFail();
+            $business = Business::query()->whereKey($businessId)->lockForUpdate()->firstOrFail();
 
             // Confirm eligibility: no existing admin for this business
-            $this->assertNoExistingAdmin($businessId);
+            $this->assertNoExistingAdmin($business);
 
             // Resolve or create the 'admin' role for this business (server-side, never from client)
             $adminRole = $this->resolveOrCreateAdminRole($businessId);
@@ -189,22 +189,16 @@ final class BusinessAdminProvisioningService
     /**
      * Assert that the business has no existing admin user.
      *
-     * An "admin" is defined as a user who holds the 'admin' role slug
-     * within this business. This prevents duplicate first-admin provisioning.
+     * An "admin" is a user of this business holding the 'admin' role of this
+     * business — the very definition {@see \App\Models\Business::adminUsers()}
+     * publishes as `has_admin`. Both sides therefore read the same fact, and a
+     * stale UI (or a repeated request) can never create a second first admin.
      *
      * @throws BusinessRuleException when an admin already exists.
      */
-    private function assertNoExistingAdmin(int $businessId): void
+    private function assertNoExistingAdmin(Business $business): void
     {
-        $exists = User::query()
-            ->join('role_user', 'users.id', '=', 'role_user.user_id')
-            ->join('roles', 'role_user.role_id', '=', 'roles.id')
-            ->where('users.business_id', $businessId)
-            ->where('roles.business_id', $businessId)
-            ->where('roles.slug', 'admin')
-            ->exists();
-
-        if ($exists) {
+        if ($business->adminUsers()->exists()) {
             throw new BusinessRuleException('This business already has an administrator. First admin provisioning can only be performed once.');
         }
     }

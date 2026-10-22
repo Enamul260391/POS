@@ -465,4 +465,89 @@ class PlatformBusinessAdminProvisioningTest extends TestCase
         $this->assertArrayNotHasKey('password_hash', $json);
         $this->assertArrayNotHasKey('remember_token', $json);
     }
+
+    /** @test */
+    public function business_payload_reports_no_admin_before_provisioning(): void
+    {
+        $this->asOwner();
+        $business = $this->createBusinessWithRoles();
+
+        $this->getJson('/api/v1/platform/businesses/'.$business->getKey())
+            ->assertOk()
+            ->assertJsonPath('data.has_admin', false);
+    }
+
+    /** @test */
+    public function business_payload_reports_the_admin_after_provisioning(): void
+    {
+        $this->asOwner();
+        $business = $this->createBusinessWithRoles();
+
+        $this->postJson($this->base($business), $this->payload())->assertCreated();
+
+        $this->getJson('/api/v1/platform/businesses/'.$business->getKey())
+            ->assertOk()
+            ->assertJsonPath('data.has_admin', true);
+    }
+
+    /** @test */
+    public function a_user_without_the_admin_role_does_not_count_as_an_admin(): void
+    {
+        $this->asOwner();
+        $business = $this->createBusinessWithRoles();
+
+        $managerRole = Role::query()
+            ->forBusiness($business->getKey())
+            ->where('slug', 'manager')
+            ->firstOrFail();
+        $manager = User::factory()->create(['business_id' => $business->getKey()]);
+        $manager->roles()->sync([$managerRole->getKey()]);
+
+        // A staffed business without an administrator still needs its first admin.
+        $this->getJson('/api/v1/platform/businesses/'.$business->getKey())
+            ->assertOk()
+            ->assertJsonPath('data.has_admin', false);
+
+        $this->postJson($this->base($business), $this->payload())->assertCreated();
+    }
+
+    /** @test */
+    public function a_repeated_request_from_a_stale_screen_is_rejected(): void
+    {
+        $this->asOwner();
+        $business = $this->createBusinessWithRoles();
+
+        $this->postJson($this->base($business), $this->payload())->assertCreated();
+
+        // The screen still offers the action, so the request is repeated.
+        $this->postJson($this->base($business), $this->payload(['email' => 'second-admin@example.com']))
+            ->assertStatus(409)
+            ->assertJson(['success' => false]);
+
+        $admins = User::query()
+            ->where('business_id', $business->getKey())
+            ->whereHas('roles', static fn ($query) => $query->where('slug', 'admin'))
+            ->count();
+
+        $this->assertSame(1, $admins);
+    }
+
+    /** @test */
+    public function an_admin_of_another_business_does_not_count_as_an_admin(): void
+    {
+        $this->asOwner();
+        $business = $this->createBusinessWithRoles();
+        $otherBusiness = $this->createBusinessWithRoles();
+
+        $otherAdminRole = Role::query()
+            ->forBusiness($otherBusiness->getKey())
+            ->where('slug', 'admin')
+            ->firstOrFail();
+        $otherAdmin = User::factory()->create(['business_id' => $otherBusiness->getKey()]);
+        $otherAdmin->roles()->sync([$otherAdminRole->getKey()]);
+
+        $this->getJson('/api/v1/platform/businesses/'.$business->getKey())
+            ->assertOk()
+            ->assertJsonPath('data.has_admin', false);
+    }
 }

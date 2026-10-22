@@ -36,6 +36,15 @@ class BusinessResource extends JsonResource
             'timezone' => $this->timezone,
             'status' => $this->status,
             'users_count' => $this->whenCounted('users'),
+            // Does this business already have an administrator? Published from
+            // the same relation the first-admin provisioning guard uses, so the
+            // UI can offer the first-admin setup exactly when the server would
+            // accept it. The key is omitted when the count was not loaded, so a
+            // client never reads "unknown" as "no admin yet".
+            'has_admin' => $this->when(
+                isset($this->resource->admin_users_count),
+                (bool) $this->resource->admin_users_count,
+            ),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];

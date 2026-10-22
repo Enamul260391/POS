@@ -387,11 +387,18 @@ final class BusinessService
     /**
      * Base query: every tenant, with the user count pre-selected.
      *
+     * `admin_users_count` is the count of users holding this business's 'admin'
+     * role. It rides along as a correlated sub-select (like `users_count`), so
+     * the platform payload can answer "does this business already have an
+     * administrator?" without a query per row and without a second request.
+     *
      * @return Builder<Business>
      */
     private function query(): Builder
     {
-        return Business::query()->withCount('users');
+        return Business::query()
+            ->withCount('users')
+            ->withCount('adminUsers');
     }
 
     /**

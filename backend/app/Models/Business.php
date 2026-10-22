@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -51,6 +52,27 @@ class Business extends Model
     public function users(): HasMany
     {
         return $this->hasMany(User::class);
+    }
+
+    /**
+     * Users of this business that hold its 'admin' role.
+     *
+     * This is the single definition of "this business already has an
+     * administrator". The platform business payload publishes it as
+     * `has_admin`, and the first-admin provisioning guard refuses to create a
+     * second one, so the UI and the server can never disagree about it.
+     *
+     * The role must belong to the same business as the user holding it
+     * (`roles.business_id = users.business_id`), so a cross-tenant pivot row
+     * can never make a business look administered.
+     */
+    public function adminUsers(): HasMany
+    {
+        return $this->hasMany(User::class)
+            ->whereHas('roles', static function (Builder $query): void {
+                $query->where('roles.slug', 'admin')
+                    ->whereColumn('roles.business_id', 'users.business_id');
+            });
     }
 
     public function roles(): HasMany

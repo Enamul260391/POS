@@ -273,6 +273,59 @@ class PlatformBusinessManagementTest extends TestCase
     }
 
     /** @test */
+    public function platform_owner_created_business_defaults_to_the_bangladesh_locale(): void
+    {
+        $this->authenticate(User::factory()->platformOwner()->create());
+
+        $this->postJson(self::BASE, ['name' => 'Default Locale Ltd'])
+            ->assertCreated()
+            ->assertJsonPath('data.currency', 'BDT')
+            ->assertJsonPath('data.timezone', 'Asia/Dhaka');
+
+        $this->assertDatabaseHas('businesses', [
+            'name' => 'Default Locale Ltd',
+            'currency' => 'BDT',
+            'timezone' => 'Asia/Dhaka',
+        ]);
+    }
+
+    /** @test */
+    public function platform_owner_can_create_a_business_with_the_bangladesh_locale(): void
+    {
+        $this->authenticate(User::factory()->platformOwner()->create());
+
+        $this->postJson(self::BASE, [
+            'name' => 'Dhaka Tenant Ltd',
+            'currency' => 'BDT',
+            'timezone' => 'Asia/Dhaka',
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.currency', 'BDT')
+            ->assertJsonPath('data.timezone', 'Asia/Dhaka');
+
+        $this->assertDatabaseHas('businesses', [
+            'name' => 'Dhaka Tenant Ltd',
+            'currency' => 'BDT',
+            'timezone' => 'Asia/Dhaka',
+        ]);
+    }
+
+    /** @test */
+    public function platform_owner_can_create_a_business_with_the_utc_timezone(): void
+    {
+        $this->authenticate(User::factory()->platformOwner()->create());
+
+        $this->postJson(self::BASE, [
+            'name' => 'Utc Tenant Ltd',
+            'currency' => 'USD',
+            'timezone' => 'UTC',
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.currency', 'USD')
+            ->assertJsonPath('data.timezone', 'UTC');
+    }
+
+    /** @test */
     public function platform_business_creation_requires_a_name(): void
     {
         $this->authenticate(User::factory()->platformOwner()->create());
@@ -352,6 +405,29 @@ class PlatformBusinessManagementTest extends TestCase
             ->assertJsonPath('data.phone', '01800000000');
 
         $this->assertDatabaseHas('businesses', ['id' => $business->getKey(), 'name' => 'New Name Ltd']);
+    }
+
+    /** @test */
+    public function updating_a_business_does_not_overwrite_its_stored_locale(): void
+    {
+        $this->authenticate(User::factory()->platformOwner()->create());
+
+        $business = Business::factory()->create([
+            'name' => 'Keeps Its Locale Ltd',
+            'currency' => 'EUR',
+            'timezone' => 'Europe/Berlin',
+        ]);
+
+        $this->putJson(self::BASE.'/'.$business->getKey(), ['name' => 'Renamed Ltd'])
+            ->assertOk()
+            ->assertJsonPath('data.currency', 'EUR')
+            ->assertJsonPath('data.timezone', 'Europe/Berlin');
+
+        $this->assertDatabaseHas('businesses', [
+            'id' => $business->getKey(),
+            'currency' => 'EUR',
+            'timezone' => 'Europe/Berlin',
+        ]);
     }
 
     /** @test */
