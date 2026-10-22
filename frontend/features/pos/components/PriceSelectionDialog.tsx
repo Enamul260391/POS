@@ -22,7 +22,16 @@ interface PriceSelectionDialogProps {
   productName: string;
   options: PriceOption[];
   quantity: number;
-  onConfirm: (option: PriceOption) => void;
+  /**
+   * Confirms the chosen option.
+   *
+   * Returns the failure message when the choice was refused (for example the
+   * exact `please add another batch of this product` shortfall), or `null`
+   * when it was accepted. A returned message is shown **inside the dialog**:
+   * the screen behind the modal is not readable while the modal is open, so a
+   * failure reported there would be lost.
+   */
+  onConfirm: (option: PriceOption) => string | null;
 }
 
 export function PriceSelectionDialog({
@@ -36,6 +45,8 @@ export function PriceSelectionDialog({
   const [selectedValue, setSelectedValue] = useState<string | null>(
     options.length > 0 ? options[0].selling_price : null,
   );
+  // The failure of the last confirmation attempt, shown inside the dialog.
+  const [error, setError] = useState<string | null>(null);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -51,39 +62,61 @@ export function PriceSelectionDialog({
         <div className="grid gap-3">
           <RadioGroup
             value={selectedValue}
-            onValueChange={setSelectedValue}
+            onValueChange={(value: string) => {
+              setSelectedValue(value);
+              // A new choice replaces the previous attempt: its failure no
+              // longer describes what the cashier just picked.
+              setError(null);
+            }}
             className="grid w-full gap-2"
           >
             {options.map((option) => {
               const available = Number(option.available_quantity);
+              // The radio is a bare control, so the option's text lives beside
+              // it inside the row's <label> — the shared `RadioGroupItem` only
+              // renders its own indicator and drops any children it is given.
+              const optionId = `price-option-${option.batch_id}`;
               return (
-                <RadioGroupItem
+                <label
                   key={option.batch_id}
-                  value={option.selling_price}
-                  className="grid grid-cols-4 gap-2 p-2 border border-input rounded-lg hover:bg-muted/50 data-[checked]:bg-primary/10 data-[checked]:border-primary/50"
+                  htmlFor={optionId}
+                  className="flex items-start gap-2 rounded-lg border border-input p-2.5 transition-colors cursor-pointer hover:bg-muted/50 has-[[data-checked]]:border-primary/50 has-[[data-checked]]:bg-primary/10"
                 >
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-sm font-medium">
-                      {formatMoney(Number(option.selling_price))}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      Batch {option.batch_number}
-                    </span>
+                  <RadioGroupItem
+                    id={optionId}
+                    value={option.selling_price}
+                    className="mt-0.5"
+                  />
+                  <div className="grid flex-1 grid-cols-2 gap-2">
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-sm font-medium">
+                        {formatMoney(Number(option.selling_price))}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        Batch {option.batch_number}
+                      </span>
+                    </div>
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-xs text-muted-foreground">
+                        Available at this price
+                      </span>
+                      <span className="text-sm font-medium">
+                        {available.toLocaleString()} unit
+                        {available !== 1 ? "s" : ""}
+                      </span>
+                    </div>
                   </div>
-                  <div className="col-span-2 flex flex-col gap-0.5">
-                    <span className="text-xs text-muted-foreground">
-                      Available at this price
-                    </span>
-                    <span className="text-sm font-medium">
-                      {available.toLocaleString()} unit
-                      {available !== 1 ? "s" : ""}
-                    </span>
-                  </div>
-                </RadioGroupItem>
+                </label>
               );
             })}
           </RadioGroup>
         </div>
+
+        {error !== null && (
+          <p className="text-xs text-destructive" role="alert">
+            {error}
+          </p>
+        )}
 
         <DialogFooter>
           <DialogClose render={<Button variant="outline">Cancel</Button>} />
@@ -93,7 +126,8 @@ export function PriceSelectionDialog({
                 (o) => o.selling_price === selectedValue,
               );
               if (selected) {
-                onConfirm(selected);
+                // A refusal keeps the dialog open and states the reason here.
+                setError(onConfirm(selected) ?? null);
               }
             }}
             disabled={selectedValue === null}

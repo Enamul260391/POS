@@ -18,6 +18,14 @@ export interface Business {
   timezone: string | null;
   status: BusinessStatus;
   usersCount: number | null;
+  /**
+   * Does this business already have an administrator (a user holding its
+   * 'admin' role)? Published by the platform API as `has_admin`.
+   *
+   * Optional on purpose: a payload that does not carry the field leaves this
+   * `undefined`, which the UI reads as "unknown" — never as "no admin yet".
+   */
+  hasAdmin?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -33,6 +41,8 @@ export interface BusinessPayload {
   timezone: string | null;
   status: string;
   users_count: number | null;
+  /** Whether the business already has an administrator; absent on older APIs. */
+  has_admin?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -67,6 +77,18 @@ export interface BusinessFormValues {
   status: BusinessStatus;
 }
 
+/**
+ * The locale every business is created with.
+ *
+ * Bangladesh is the only supported locale for now, so both values are fixed:
+ * the create form shows them read-only and the API receives them unchanged.
+ * The backend applies the same defaults for a business created without an
+ * explicit locale.
+ */
+export const DEFAULT_BUSINESS_CURRENCY = "BDT";
+
+export const DEFAULT_BUSINESS_TIMEZONE = "Asia/Dhaka";
+
 /** Blank state for "Create business". */
 export const EMPTY_BUSINESS_VALUES: BusinessFormValues = {
   name: "",
@@ -74,8 +96,8 @@ export const EMPTY_BUSINESS_VALUES: BusinessFormValues = {
   email: "",
   address: "",
   logo: "",
-  currency: "USD",
-  timezone: "UTC",
+  currency: DEFAULT_BUSINESS_CURRENCY,
+  timezone: DEFAULT_BUSINESS_TIMEZONE,
   status: "active",
 };
 
@@ -87,8 +109,10 @@ export function toBusinessFormValues(business: Business): BusinessFormValues {
     email: business.email ?? "",
     address: business.address ?? "",
     logo: business.logo ?? "",
-    currency: business.currency ?? "USD",
-    timezone: business.timezone ?? "UTC",
+    // A business stored without a locale falls back to the platform default
+    // rather than to a foreign one; a stored value is never replaced.
+    currency: business.currency ?? DEFAULT_BUSINESS_CURRENCY,
+    timezone: business.timezone ?? DEFAULT_BUSINESS_TIMEZONE,
     status: business.status,
   };
 }

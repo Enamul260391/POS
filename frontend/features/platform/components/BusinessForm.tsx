@@ -32,15 +32,21 @@ import {
 } from "@/lib/api/validation";
 import { usePlatformBusinessStore } from "@/stores/usePlatformBusinessStore";
 import type { Business, BusinessFormValues, BusinessStatus } from "@/types/platform";
-import { BUSINESS_STATUS_OPTIONS, EMPTY_BUSINESS_VALUES, BUSINESS_FORM_FIELDS, toBusinessFormValues } from "@/types/platform";
+import { BUSINESS_STATUS_OPTIONS, EMPTY_BUSINESS_VALUES, BUSINESS_FORM_FIELDS, DEFAULT_BUSINESS_CURRENCY, DEFAULT_BUSINESS_TIMEZONE, toBusinessFormValues } from "@/types/platform";
 
 /** What the dialog was opened for: a brand new business or an existing one. */
 export type BusinessFormTarget =
   | { mode: "add" }
   | { mode: "edit"; business: Business };
 
-/** Timezone validation — IANA timezone identifier pattern (loose). */
-const TIMEZONE_PATTERN = /^[A-Za-z_+\-]+\/[A-Za-z_+\-]+$/;
+/**
+ * Timezone validation — IANA timezone identifier pattern (loose).
+ *
+ * `UTC` is accepted next to the `Area/Location` form: it is a valid timezone
+ * identifier that businesses may already carry, and rejecting it would make
+ * an otherwise valid business unsaveable.
+ */
+const TIMEZONE_PATTERN = /^(UTC|[A-Za-z_+\-]+\/[A-Za-z_+\-]+)$/;
 
 /** Currency validation — ISO 4217 three-letter code. */
 const CURRENCY_PATTERN = /^[A-Z]{3}$/;
@@ -92,8 +98,8 @@ interface BusinessFormProps {
  *
  * A save goes through the API via the store. Laravel's `422` error bag is mapped
  * back onto the offending input, and anything else is shown as a form-level
- * message. The dialog closes only on success, so a rejection leaves the entered
- * values on screen.
+ * message. Success is reported through `onSubmitSuccess`; the parent decides
+ * where to navigate, so a rejection leaves the entered values on screen.
  *
  * Mounted only while open, so every open starts from fresh state.
  */
@@ -121,7 +127,6 @@ export function BusinessForm({ target, onOpenChange, onSubmitSuccess }: Business
         business = await addBusiness(values);
       }
       onSubmitSuccess?.(business);
-      onOpenChange(false);
     } catch (error) {
       applyValidationErrors(error, setError, BUSINESS_FORM_FIELDS);
       if (!hasValidationErrors(error)) {
@@ -151,59 +156,99 @@ export function BusinessForm({ target, onOpenChange, onSubmitSuccess }: Business
             </p>
           )}
 
-          <div className="grid max-h-[70dvh] gap-x-3 gap-y-3 overflow-y-auto pr-1 sm:grid-cols-2">
-            <TextField
-              id="name"
-              label="Business name"
-              register={form.register}
-              error={currentErrors.name?.message}
-              placeholder="Acme Corporation"
-            />
-            <TextField
-              id="email"
-              label="Email"
-              type="email"
-              register={form.register}
-              error={currentErrors.email?.message}
-              placeholder="contact@acme.example"
-            />
-            <TextField
-              id="phone"
-              label="Phone"
-              type="tel"
-              register={form.register}
-              error={currentErrors.phone?.message}
-              placeholder="+1 555 0123"
-            />
-            <TextField
-              id="address"
-              label="Address"
-              register={form.register}
-              error={currentErrors.address?.message}
-              placeholder="123 Main St, City, Country"
-            />
-            <TextField
-              id="logo"
-              label="Logo URL"
-              type="url"
-              register={form.register}
-              error={currentErrors.logo?.message}
-              placeholder="https://example.com/logo.png"
-            />
-            <TextField
-              id="currency"
-              label="Currency (ISO 4217)"
-              register={form.register}
-              error={currentErrors.currency?.message}
-              placeholder="USD"
-            />
-            <TextField
-              id="timezone"
-              label="Timezone (IANA)"
-              register={form.register}
-              error={currentErrors.timezone?.message}
-              placeholder="America/New_York"
-            />
+          <div className="grid max-h-[70dvh] gap-x-3 gap-y-3 overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-3">
+            {/*
+              Row layout: the business name takes the full width, then three
+              rows of two equal fields (email/phone, address/logo,
+              currency/timezone). Each pair lives in its own container that
+              spans the whole row and splits it in two, so the fields stay
+              equal width on every screen size. Below `sm` the pairs stack.
+            */}
+            <div className="sm:col-span-2 lg:col-span-3">
+              <TextField
+                id="name"
+                label="Business name"
+                register={form.register}
+                error={currentErrors.name?.message}
+                placeholder="Acme Corporation"
+              />
+            </div>
+            <div className="grid gap-3 sm:col-span-2 sm:grid-cols-2 lg:col-span-3">
+              <TextField
+                id="email"
+                label="Email"
+                type="email"
+                register={form.register}
+                error={currentErrors.email?.message}
+                placeholder="contact@acme.example"
+              />
+              <TextField
+                id="phone"
+                label="Phone"
+                type="tel"
+                register={form.register}
+                error={currentErrors.phone?.message}
+                placeholder="+1 555 0123"
+              />
+            </div>
+            <div className="grid gap-3 sm:col-span-2 sm:grid-cols-2 lg:col-span-3">
+              <TextField
+                id="address"
+                label="Address"
+                register={form.register}
+                error={currentErrors.address?.message}
+                placeholder="123 Main St, City, Country"
+              />
+              <TextField
+                id="logo"
+                label="Logo URL"
+                type="url"
+                register={form.register}
+                error={currentErrors.logo?.message}
+                placeholder="https://example.com/logo.png"
+              />
+            </div>
+            <div className="grid gap-3 sm:col-span-2 sm:grid-cols-2 lg:col-span-3">
+              {isEdit ? (
+                <>
+                  <TextField
+                    id="currency"
+                    label="Currency (ISO 4217)"
+                    register={form.register}
+                    error={currentErrors.currency?.message}
+                    placeholder={DEFAULT_BUSINESS_CURRENCY}
+                  />
+                  <TextField
+                    id="timezone"
+                    label="Timezone (IANA)"
+                    register={form.register}
+                    error={currentErrors.timezone?.message}
+                    placeholder={DEFAULT_BUSINESS_TIMEZONE}
+                  />
+                </>
+              ) : (
+                <>
+                  <ReadOnlyField
+                    id="currency"
+                    label="Currency"
+                    value={`${DEFAULT_BUSINESS_CURRENCY} — ৳`}
+                    hint="Bangladeshi Taka"
+                  />
+                  <ReadOnlyField
+                    id="timezone"
+                    label="Timezone"
+                    value={DEFAULT_BUSINESS_TIMEZONE}
+                    hint="UTC+06:00"
+                  />
+                  {/*
+                    The rows above are display only, so the values the API
+                    receives are carried by these hidden registered fields.
+                  */}
+                  <input type="hidden" {...form.register("currency")} />
+                  <input type="hidden" {...form.register("timezone")} />
+                </>
+              )}
+            </div>
             <SelectField
               name="status"
               label="Status"
@@ -236,6 +281,44 @@ function FormError({ message }: { message?: string }) {
     <p className="text-xs text-destructive" role="alert">
       {message}
     </p>
+  );
+}
+
+interface ReadOnlyFieldProps {
+  id: string;
+  label: string;
+  /** The text shown to the user — richer than the value in the payload. */
+  value: string;
+  /** Secondary line under the value (offset, display name, …). */
+  hint: string;
+}
+
+/**
+ * A fixed value the Platform Owner cannot change (yet).
+ *
+ * The visible field is a read-only input, so the label is properly associated
+ * with it and assistive technology announces it as read-only. The value the
+ * API receives travels in a hidden registered field instead, so the displayed
+ * text can be richer than the payload value.
+ */
+function ReadOnlyField({ id, label, value, hint }: ReadOnlyFieldProps) {
+  return (
+    <div className="grid gap-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <Label htmlFor={id}>{label}</Label>
+        <span className="text-xs text-muted-foreground">Read-only</span>
+      </div>
+      <Input
+        id={id}
+        value={value}
+        readOnly
+        aria-describedby={`${id}-hint`}
+        className="bg-muted/60 text-muted-foreground"
+      />
+      <p id={`${id}-hint`} className="text-xs text-muted-foreground">
+        {hint}
+      </p>
+    </div>
   );
 }
 

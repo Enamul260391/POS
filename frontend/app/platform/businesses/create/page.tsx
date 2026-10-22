@@ -25,6 +25,24 @@ export default function PlatformBusinessCreatePage() {
     setShowAdminForm(true);
   };
 
+  const handleBusinessDialogOpenChange = (open: boolean) => {
+    if (!open) {
+      router.push("/platform/businesses");
+    }
+  };
+
+  const handleAdminDialogOpenChange = (open: boolean) => {
+    if (open) {
+      return;
+    }
+
+    router.push(
+      createdBusiness
+        ? `/platform/businesses/${createdBusiness.id}`
+        : "/platform/businesses",
+    );
+  };
+
   const handleAdminCreated = () => {
     // Navigate to the business detail page to show the created business and admin
     router.push(`/platform/businesses/${createdBusiness?.id}`);
@@ -43,9 +61,7 @@ export default function PlatformBusinessCreatePage() {
 
         <BusinessForm
           target={formTarget}
-          onOpenChange={(open) => {
-            if (!open) return;
-          }}
+          onOpenChange={handleBusinessDialogOpenChange}
           onSubmitSuccess={handleBusinessCreated}
         />
       </section>
@@ -70,7 +86,7 @@ export default function PlatformBusinessCreatePage() {
 
       <FirstAdminForm
         business={createdBusiness}
-        onOpenChange={setShowAdminForm}
+        onOpenChange={handleAdminDialogOpenChange}
         onSuccess={handleAdminCreated}
       />
     </section>

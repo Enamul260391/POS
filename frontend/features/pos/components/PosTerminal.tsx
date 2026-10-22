@@ -109,21 +109,28 @@ export function PosTerminal() {
     return outcome;
   }, []);
 
-  const confirmPriceSelection = (option: PriceOption) => {
+  /**
+   * Confirms the cashier's batch choice.
+   *
+   * A refusal is handed back to the dialog, which states the reason inside
+   * it: the screen behind the modal cannot be read while the modal is open, so
+   * a message set there would never reach the cashier.
+   */
+  const confirmPriceSelection = (option: PriceOption): string | null => {
     if (pendingSelection === null) {
-      return;
+      return null;
     }
 
     const { product, quantity } = pendingSelection;
     const outcome = addChosenPriceToSale(product, option, quantity, option.batch_id);
     if (!outcome.ok) {
-      setAddMessage(outcome.message);
-      return;
+      return outcome.message;
     }
 
     setPendingSelection(null);
     setQuery("");
     setAddMessage(null);
+    return null;
   };
 
   useEffect(() => {

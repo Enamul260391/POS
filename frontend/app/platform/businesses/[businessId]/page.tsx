@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Building2, Mail, MapPin, Phone, RefreshCw } from "lucide-react";
+import { Building2, Mail, MapPin, Phone, RefreshCw, UserPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { formatLocalDateTime } from "@/lib/datetime";
 
+import { FirstAdminForm } from "@/features/platform/components/FirstAdminForm";
 import { getBusiness } from "@/features/platform/services/platformBusinessService";
 import type { Business } from "@/types/platform";
 
@@ -18,6 +19,13 @@ interface BusinessDetailsPageProps {
  * `/platform/businesses/:businessId` — Business details.
  *
  * Fetches business data from the API on mount.
+ *
+ * A business whose first admin was never provisioned (the setup step was
+ * cancelled or failed) can be recovered from here: the API reports whether the
+ * business already has an administrator (`has_admin`), and the "Create First
+ * Admin" action opens the same first-admin form the creation flow uses. The
+ * action only appears when the API says there is no administrator — an unknown
+ * state is never treated as "no admin yet".
  */
 export default function PlatformBusinessDetailsPage({ params }: BusinessDetailsPageProps) {
   const router = useRouter();
@@ -32,6 +40,8 @@ export default function PlatformBusinessDetailsPage({ params }: BusinessDetailsP
   const [business, setBusiness] = useState<Business | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showAdminForm, setShowAdminForm] = useState(false);
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     if (!resolvedParams) return;
@@ -61,7 +71,23 @@ export default function PlatformBusinessDetailsPage({ params }: BusinessDetailsP
     return () => {
       cancelled = true;
     };
-  }, [id, resolvedParams]);
+  }, [id, resolvedParams, reloadToken]);
+
+  /** The first-admin dialog was dismissed: the business itself is unchanged. */
+  const handleAdminFormOpenChange = (open: boolean) => {
+    if (!open) {
+      setShowAdminForm(false);
+    }
+  };
+
+  /**
+   * The first admin was created: close the dialog and reload the business so
+   * the recovery action disappears and the new administrator is reflected.
+   */
+  const handleAdminCreated = () => {
+    setShowAdminForm(false);
+    setReloadToken((token) => token + 1);
+  };
 
   if (isLoading) {
     return (
@@ -103,6 +129,12 @@ export default function PlatformBusinessDetailsPage({ params }: BusinessDetailsP
           <p className="text-sm text-muted-foreground">Business ID: {business.id}</p>
         </div>
         <div className="flex gap-2">
+          {business.hasAdmin === false && (
+            <Button onClick={() => setShowAdminForm(true)}>
+              <UserPlus className="size-4" aria-hidden="true" />
+              Create First Admin
+            </Button>
+          )}
           <Button variant="outline" onClick={() => router.push(`/platform/businesses/${business.id}/edit`)}>
             Edit
           </Button>
@@ -142,6 +174,10 @@ export default function PlatformBusinessDetailsPage({ params }: BusinessDetailsP
             </dd>
             <dt className="text-muted-foreground">Users</dt>
             <dd className="font-medium">{business.usersCount ?? "—"}</dd>
+            <dt className="text-muted-foreground">First admin</dt>
+            <dd className="font-medium">
+              {business.hasAdmin === false ? "Not provisioned" : business.hasAdmin === true ? "Provisioned" : "—"}
+            </dd>
           </dl>
         </section>
 
@@ -222,6 +258,14 @@ export default function PlatformBusinessDetailsPage({ params }: BusinessDetailsP
           <dd className="whitespace-nowrap font-medium">{formatLocalDateTime(business.updatedAt)}</dd>
         </dl>
       </section>
+
+      {showAdminForm && (
+        <FirstAdminForm
+          business={business}
+          onOpenChange={handleAdminFormOpenChange}
+          onSuccess={handleAdminCreated}
+        />
+      )}
     </section>
   );
 }

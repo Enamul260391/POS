@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Minus, Plus, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -7,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import {
   canAddProduct,
   cartQuantityOf,
+  describeCartFailure,
   remainingStock,
 } from "@/features/pos/lib/catalog";
 import { formatMoney, formatQuantity } from "@/features/pos/lib/format";
@@ -14,6 +16,7 @@ import { useCommittedNumber } from "@/features/pos/hooks/useCommittedNumber";
 import {
   quantityStep,
   useCartStore,
+  type CartActionResult,
   type CartLineTotals,
 } from "@/stores/useCartStore";
 import { useCatalogueStore } from "@/stores/useProductStore";
@@ -32,6 +35,14 @@ const DISCOUNT_FIELD_CLASS =
   "h-7 w-20 rounded-md border-input text-right text-sm tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
 
 /**
+ * Shown when the product's total ledger stock is exhausted.
+ *
+ * Distinct from the selling price group's shortfall: there the product still
+ * has stock at another price, here nothing more can be sold at all.
+ */
+const STOCK_OUT_MESSAGE = "Stock Out";
+
+/**
  * One cart line: quantity controls, item discount and the line total.
  *
  * Reads master data (stock) from the API-backed catalogue rather than storing it
@@ -40,8 +51,24 @@ const DISCOUNT_FIELD_CLASS =
  * editing, then the field snaps back to whatever the store accepted (validated,
  * clamped), so the screen can never show a value the store rejected.
  *
- * The increase button disables at the stock limit — one of the three stock
- * guards (card, add helpers, this button) that all share `canAddProduct`.
+ * Stock guards
+ * ------------
+ * Two different limits can stop an increase, and they are told apart:
+ *
+ * - The product's **total** ledger stock, across every price group. This is
+ *   the hard guard that shares `canAddProduct` with the card and the add
+ *   helpers. When it is exhausted the cashier is told `Stock Out`: nothing
+ *   more of this product can be sold at any price.
+ * - The line's **own selling price group**, which may run out while the
+ *   product still has stock elsewhere. The store refuses that change and
+ *   names the reason, so the line shows
+ *   `please add another batch of this product` and the cashier adds another
+ *   batch by picking another price explicitly.
+ *
+ * The increase button stays clickable in both cases: a dead button tells the
+ * cashier nothing, and the limit is reported where the action happened. It
+ * only disables for a product that is no longer sellable — the same rule the
+ * product card follows.
  */
 export function CartItem({ line, totals }: CartItemProps) {
   // Subscribing to a single catalogue row (a primitive selector) means a stock
@@ -54,20 +81,47 @@ export function CartItem({ line, totals }: CartItemProps) {
   );
   const step = quantityStep(line.product.unit);
   const remaining = product === undefined ? null : remainingStock(product, inCartQuantity);
-  const remainingAtPrice =
-    line.priceAvailableQuantity === null
-      ? null
-      : Math.max(0, line.priceAvailableQuantity - line.quantity);
-  const canIncrease =
-    (product === undefined ? true : canAddProduct(product, inCartQuantity, step)) &&
-    (remainingAtPrice === null || remainingAtPrice >= step);
+  // A product that is no longer sellable cannot be increased at all.
+  const productSellable = product === undefined ? true : product.status === "active";
+
+  // The refusal of the last quantity change, shown inside this line. One
+  // message per line, so a single failed action can never stack duplicates.
+  const [error, setError] = useState<string | null>(null);
+
+  /** Applies a quantity change and states a refusal inside the line. */
+  const runQuantityAction = (action: () => CartActionResult): void => {
+    const result = action();
+    setError(result.ok ? null : describeCartFailure(result.reason));
+  };
+
+  /**
+   * Increases the line by one step.
+   *
+   * The product's total ledger stock is checked here, before the store is
+   * called: when it cannot serve another unit the line reports `Stock Out`
+   * and the cart is left untouched. Everything else is the store's decision,
+   * and its refusal reason names the limit that stopped it.
+   */
+  const handleIncrease = (): void => {
+    if (!productSellable) {
+      return;
+    }
+    if (product !== undefined && !canAddProduct(product, inCartQuantity, step)) {
+      setError(STOCK_OUT_MESSAGE);
+      return;
+    }
+    runQuantityAction(() => useCartStore.getState().increaseQuantity(line.id, step));
+  };
 
   // Store setters return what they actually stored — commit writes that back.
   const quantityField = useCommittedNumber(line.quantity, (next) => {
     const result = useCartStore.getState().setQuantity(line.id, next);
     if (!result.ok) {
+      // Refused: the stored quantity stays as it was and the reason is shown.
+      setError(describeCartFailure(result.reason));
       return line.quantity;
     }
+    setError(null);
     const current = useCartStore
       .getState()
       .items.find((item) => item.id === line.id);
@@ -116,7 +170,11 @@ export function CartItem({ line, totals }: CartItemProps) {
             type="button"
             variant="ghost"
             size="icon-sm"
-            onClick={() => useCartStore.getState().decreaseQuantity(line.id, step)}
+            onClick={() =>
+              runQuantityAction(() =>
+                useCartStore.getState().decreaseQuantity(line.id, step),
+              )
+            }
             aria-label={`Decrease quantity of ${line.product.name}`}
           >
             <Minus aria-hidden="true" />
@@ -137,8 +195,8 @@ export function CartItem({ line, totals }: CartItemProps) {
             type="button"
             variant="ghost"
             size="icon-sm"
-            disabled={!canIncrease}
-            onClick={() => useCartStore.getState().increaseQuantity(line.id, step)}
+            disabled={!productSellable}
+            onClick={handleIncrease}
             aria-label={`Increase quantity of ${line.product.name}`}
           >
             <Plus aria-hidden="true" />
@@ -167,6 +225,12 @@ export function CartItem({ line, totals }: CartItemProps) {
           />
         </div>
       </div>
+
+      {error !== null && (
+        <p role="alert" className="text-xs text-destructive">
+          {error}
+        </p>
+      )}
 
       <div className="flex items-center justify-between gap-2 text-xs">
         <span className="text-muted-foreground">

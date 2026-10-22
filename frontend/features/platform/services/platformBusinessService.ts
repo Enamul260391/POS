@@ -24,6 +24,9 @@ function toBusiness(payload: BusinessPayload): Business {
     timezone: payload.timezone,
     status: payload.status as Business["status"],
     usersCount: payload.users_count,
+    // `undefined` when the API does not publish the flag: the UI then treats
+    // the admin state as unknown instead of assuming there is no admin.
+    hasAdmin: payload.has_admin,
     createdAt: payload.created_at,
     updatedAt: payload.updated_at,
   };

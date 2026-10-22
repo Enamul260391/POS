@@ -84,7 +84,6 @@ export function FirstAdminForm({ business, onOpenChange, onSuccess }: FirstAdmin
     try {
       const admin = await provisionFirstAdmin(business.id, values);
       onSuccess?.(admin);
-      onOpenChange(false);
     } catch (error) {
       applyValidationErrors(error, setError, ADMIN_FORM_FIELDS);
       if (!hasValidationErrors(error)) {
