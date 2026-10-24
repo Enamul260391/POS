@@ -36,7 +36,9 @@ vi.mock("@/lib/realtime", () => ({
     productCreated: "product.created",
     productUpdated: "product.updated",
     productDeleted: "product.deleted",
-    productStockUpdated: "product.stock_updated",
+    // The same name the backend broadcasts (`broadcastAs()`), so the mock can
+    // never hide an event-name mismatch.
+    productStockUpdated: "product.stock.updated",
   },
 }));
 

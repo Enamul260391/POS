@@ -49,6 +49,17 @@ export interface CatalogueLoadOptions {
 export interface CatalogueStore {
   /** Loaded products; `[]` until the first `hydrate` resolves. */
   products: Product[];
+  /**
+   * The latest stock balance the server pushed for a product, keyed by product
+   * id.
+   *
+   * Written **only** by the realtime `product.stock.updated` event, never by a
+   * REST response. It exists for the screens that keep their own copy of a
+   * product row — the POS terminal's server-side search results — which the
+   * cached `products` array cannot refresh for them. A screen that has no entry
+   * for a product keeps the stock its own request returned.
+   */
+  liveStock: Record<number, number>;
   /** Loaded categories; `[]` until the first `hydrate` resolves. */
   categories: Category[];
   /** `true` while `hydrate` is in flight. */
@@ -268,14 +279,29 @@ type SetState = (
  * frontend never derives one (`stock - quantity`). Only the stock field is
  * touched, so a product's name, price and category are left exactly as the last
  * REST response delivered them.
+ *
+ * The balance is recorded twice, for two different readers:
+ *
+ *   - `products[].stock`, for the screens that render the cached catalogue
+ *     (Inventory, Products, the POS cart line).
+ *   - `liveStock[productId]`, for the screens that hold their **own** copy of
+ *     a product row — the POS terminal's server-side search results. Those rows
+ *     are not the cached catalogue, so without this map a realtime balance
+ *     could never reach them.
+ *
+ * `liveStock` is written **only** here, from a value the server pushed. It is
+ * never filled from a REST response, so it can only ever hold the latest
+ * authoritative balance, and a screen may fall back to its own REST value
+ * whenever it has no entry for a product.
  */
 function applyStock(set: SetState, productId: number, currentStock: string): void {
+  const stock = toQuantity(currentStock);
+
   set((state) => ({
     products: state.products.map((product) =>
-      product.id === productId
-        ? { ...product, stock: toQuantity(currentStock) }
-        : product,
+      product.id === productId ? { ...product, stock } : product,
     ),
+    liveStock: { ...state.liveStock, [productId]: stock },
   }));
 }
 
@@ -320,16 +346,40 @@ async function refreshOneProduct(set: SetState, productId: number): Promise<void
 }
 
 /**
+ * Drops a product's pushed stock from the live map.
+ *
+ * The map is replaced rather than mutated, so subscribers see a new reference
+ * and re-render. A product that is gone must not keep a live balance.
+ */
+function forgetLiveStock(
+  state: CatalogueStore,
+  productId: number,
+): Record<number, number> {
+  if (!(productId in state.liveStock)) {
+    return state.liveStock;
+  }
+
+  const liveStock = { ...state.liveStock };
+  delete liveStock[productId];
+
+  return liveStock;
+}
+
+/**
  * Drops a deleted product from the cache.
  *
  * Only the catalogue entry is removed. A product sitting in the POS cart is
  * left completely alone: the backend defines no rule for "a cart line was
  * deleted", and inventing one (auto-removing the line, blocking checkout) would
  * be a business decision rather than a realtime one. See the phase report.
+ *
+ * The pushed stock goes with it: a product that left the catalogue must not
+ * keep a live balance that another product could be shown against.
  */
 function removeOneProduct(set: SetState, productId: number): void {
   set((state) => ({
     products: state.products.filter((entry) => entry.id !== productId),
+    liveStock: forgetLiveStock(state, productId),
   }));
 }
 
@@ -338,6 +388,7 @@ let subscribedBusinessId: number | null = null;
 
 export const useCatalogueStore = create<CatalogueStore>()((set, get) => ({
   products: [],
+  liveStock: {},
   categories: [],
   isLoading: false,
   error: null,
@@ -425,6 +476,7 @@ export const useCatalogueStore = create<CatalogueStore>()((set, get) => ({
     await deleteProductRequest(productId);
     set((state) => ({
       products: state.products.filter((product) => product.id !== productId),
+      liveStock: forgetLiveStock(state, productId),
     }));
   },
 
@@ -456,6 +508,7 @@ export const useCatalogueStore = create<CatalogueStore>()((set, get) => ({
     set({
       products: [],
       categories: [],
+      liveStock: {},
       isLoading: false,
       error: null,
       categoryError: null,
@@ -540,6 +593,17 @@ export const useCatalogueStore = create<CatalogueStore>()((set, get) => ({
 
 /** Selects the cached products; stable reference until the cache changes. */
 export const selectProducts = (state: CatalogueStore): Product[] => state.products;
+
+/**
+ * Selects the stock balances the server pushed over realtime.
+ *
+ * The reference changes only when a `product.stock.updated` event arrives, so
+ * a screen subscribed to it re-renders exactly on a live stock change and
+ * never on an unrelated store update.
+ */
+export const selectLiveStock = (
+  state: CatalogueStore,
+): Record<number, number> => state.liveStock;
 
 /** Selects the cached categories; stable reference until the cache changes. */
 export const selectCategories = (state: CatalogueStore): Category[] =>

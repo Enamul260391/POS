@@ -111,6 +111,7 @@ const createMockCartStore = () => ({
 
 const createMockCatalogueStore = () => ({
   products: [] as Product[],
+  liveStock: {} as Record<number, number>,
   categories: [],
   isLoading: false,
   error: null,

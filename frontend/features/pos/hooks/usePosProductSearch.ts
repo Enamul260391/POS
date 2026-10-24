@@ -1,14 +1,37 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { searchSellableProducts } from "@/features/products/services/productService";
 import { useApiResource } from "@/lib/api/useApiResource";
-import { useCatalogueStore } from "@/stores/useProductStore";
+import { selectLiveStock, useCatalogueStore } from "@/stores/useProductStore";
 import type { Product } from "@/types/product";
 
 /** Quiet period after the last keystroke before a search request is sent. */
 const SEARCH_DEBOUNCE_MS = 300;
+
+/**
+ * Overlays the balances the server pushed over realtime onto the search rows.
+ *
+ * The rows themselves stay the server's: the search decides *which* products
+ * are on screen and the API remains the source of their master data. Only the
+ * stock figure is overlaid, because that is the one field a stock movement
+ * changes, and the pushed balance is the authoritative one.
+ *
+ * A row with no pushed balance keeps the stock its own request returned, so a
+ * disconnected socket can never make the grid worse than the REST answer.
+ * The API rows are never mutated: the overlay builds new objects.
+ */
+function overlayLiveStock(
+  rows: readonly Product[],
+  liveStock: Record<number, number>,
+): Product[] {
+  return rows.map((row) => {
+    const pushed = liveStock[row.id];
+
+    return pushed === undefined ? row : { ...row, stock: pushed };
+  });
+}
 
 /** What the POS terminal needs in order to render a product result. */
 export interface PosProductSearch {
@@ -49,9 +72,23 @@ export interface PosProductSearch {
  * `AbortController`, a newer run aborts the previous one, and a superseded run
  * is refused by a monotonic `runIdRef`. So "Jon" resolving after "Jonshen" can
  * never overwrite the newer result. Nothing is re-implemented here.
+ *
+ * Realtime
+ * --------
+ * The rows are a snapshot of the moment the search ran, so a stock movement
+ * that happens while the cashier sits on this screen would otherwise show up
+ * only after the next search or a page reload. The balances the server pushes
+ * over realtime (`product.stock.updated`) are laid over the rows, so the grid
+ * follows the ledger live — without a new request and without touching the
+ * search itself, which still decides which products are on screen.
  */
 export function usePosProductSearch(query: string): PosProductSearch {
   const [term, setTerm] = useState("");
+
+  // The balances the server pushed over realtime. Subscribing to the map (a
+  // stable reference until an event arrives) means a stock movement re-renders
+  // the terminal without a new search request and without a page reload.
+  const liveStock = useCatalogueStore(selectLiveStock);
 
   // The debounced term. Runs on mount too (with `""`), which is harmless: an
   // empty term disables the loader, so the initial render issues no request.
@@ -73,7 +110,8 @@ export function usePosProductSearch(query: string): PosProductSearch {
   // line built from a search hit can still read its product's stock (the cart
   // resolves master data through the store, as it always has). This is a cache
   // write of the rows already on screen — it issues no request and does not mark
-  // the catalogue as loaded.
+  // the catalogue as loaded. It never refreshes an already cached row, so it
+  // cannot overwrite a pushed balance with an older one.
   useEffect(() => {
     if (data !== null && data.length > 0) {
       useCatalogueStore.getState().cacheProducts(data);
@@ -82,12 +120,19 @@ export function usePosProductSearch(query: string): PosProductSearch {
 
   const isActive = term !== "";
 
+  // The rows the grid renders: the server's search result with the pushed
+  // balances laid over them.
+  const products = useMemo(
+    () => (isActive ? overlayLiveStock(data ?? [], liveStock) : []),
+    [isActive, data, liveStock],
+  );
+
   return {
     // An empty query is the empty result set. `useApiResource` keeps the last
     // successful `data` when the loader is disabled, so clearing the search must
     // drop it here — otherwise stale rows would stay on screen, and re-enabling
     // it would flash the previous query's products.
-    products: isActive ? (data ?? []) : [],
+    products,
     // `isLoading` is flipped in a microtask, so on the first render after a
     // query starts it is still false; `data === null` covers that gap and keeps
     // the "No products found" state from flashing before the request lands.
