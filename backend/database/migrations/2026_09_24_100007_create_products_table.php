@@ -21,10 +21,6 @@ return new class extends Migration
             $table->string('name', 150);
             $table->string('sku', 50)->nullable();
             $table->string('barcode', 100)->nullable();
-            $table->text('description')->nullable();
-            $table->decimal('cost_price', 15, 2)->default(0);
-            $table->decimal('selling_price', 15, 2)->default(0);
-            $table->decimal('tax_rate', 5, 2)->default(0);
             $table->string('unit', 20)->default('pcs');
             $table->unsignedInteger('low_stock_threshold')->default(0);
             $table->string('image', 255)->nullable();

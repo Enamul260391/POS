@@ -34,8 +34,8 @@ class SaleTest extends TestCase
         $this->business = Business::factory()->create();
         $this->user = $this->actingAsBusinessUser($this->business);
         $this->customer = Customer::factory()->create(['business_id' => $this->business->id]);
-        $this->product = Product::factory()->create(['business_id' => $this->business->id, 'selling_price' => '500.00']);
-        $this->product2 = Product::factory()->create(['business_id' => $this->business->id, 'selling_price' => '100.00']);
+        $this->product = Product::factory()->create(['business_id' => $this->business->id]);
+        $this->product2 = Product::factory()->create(['business_id' => $this->business->id]);
         $this->otherBusiness = Business::factory()->create();
         $this->otherUser = User::factory()->create(['business_id' => $this->otherBusiness->id]);
         $this->otherCustomer = Customer::factory()->create(['business_id' => $this->otherBusiness->id]);
@@ -86,7 +86,7 @@ class SaleTest extends TestCase
     /** @test */
     public function price_defaults_and_guards(): void
     {
-        $r = $this->postJson('/api/v1/sales', ['sale_date' => now()->toDateString(), 'items' => [['product_id' => $this->product->id, 'quantity' => 1]]]);
+        $r = $this->postJson('/api/v1/sales', ['sale_date' => now()->toDateString(), 'items' => [['product_id' => $this->product->id, 'quantity' => 1, 'unit_price' => 500]]]);
         $r->assertStatus(201);
         $this->assertSame('500.00', $r->json('data.items.0.unit_price'));
         $bad = $this->postJson('/api/v1/sales', $this->payload(['items' => [['product_id' => $this->product->id, 'quantity' => 999, 'unit_price' => 10]]]));

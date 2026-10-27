@@ -79,12 +79,6 @@ const productFields = {
     // `0` is the "not chosen" sentinel of the select; the API accepts a null
     // category, so an untouched field is valid.
     .refine((value) => value === 0 || value > 0, "Select a category"),
-  costPrice: z
-    .number({ invalid_type_error: "Required" })
-    .min(0, "Cannot be negative"),
-  sellingPrice: z
-    .number({ invalid_type_error: "Required" })
-    .min(0, "Cannot be negative"),
   unit: z.enum(UNIT_VALUES),
   lowStockThreshold: z
     .number({ invalid_type_error: "Required" })
@@ -112,8 +106,6 @@ export const EMPTY_PRODUCT_VALUES: ProductFormValues = {
   sku: "",
   barcode: "",
   categoryId: 0,
-  costPrice: Number.NaN,
-  sellingPrice: Number.NaN,
   unit: "piece",
   lowStockThreshold: Number.NaN,
   status: "active",
@@ -126,8 +118,6 @@ export function toProductFormValues(product: Product): ProductFormValues {
     sku: product.sku ?? "",
     barcode: product.barcode ?? "",
     categoryId: product.categoryId ?? 0,
-    costPrice: product.costPrice,
-    sellingPrice: product.sellingPrice,
     unit: product.unit,
     lowStockThreshold: product.lowStockThreshold,
     status: product.status,

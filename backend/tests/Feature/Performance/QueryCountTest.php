@@ -82,7 +82,6 @@ class QueryCountTest extends TestCase
     {
         $product = Product::factory()->create([
             'business_id' => $this->business->id,
-            'selling_price' => '100.00',
         ]);
         StockMovement::create([
             'business_id' => $this->business->id,
@@ -169,7 +168,7 @@ class QueryCountTest extends TestCase
 
         $lines = [];
         for ($i = 0; $i < 4; $i++) {
-            $product = Product::factory()->create(['business_id' => $this->business->id, 'selling_price' => '100.00']);
+            $product = Product::factory()->create(['business_id' => $this->business->id]);
             StockMovement::create([
                 'business_id' => $this->business->id, 'product_id' => $product->id,
                 'type' => StockMovement::TYPE_RECEIVE, 'quantity' => '50', 'created_by' => $user->id,
@@ -219,8 +218,8 @@ class QueryCountTest extends TestCase
         $user = $this->actingAsBusinessUser($this->business);
         $customer = Customer::factory()->create(['business_id' => $this->business->id]);
 
-        $plenty = Product::factory()->create(['business_id' => $this->business->id, 'selling_price' => '10.00']);
-        $scarce = Product::factory()->create(['business_id' => $this->business->id, 'selling_price' => '10.00']);
+        $plenty = Product::factory()->create(['business_id' => $this->business->id]);
+        $scarce = Product::factory()->create(['business_id' => $this->business->id]);
         StockMovement::create([
             'business_id' => $this->business->id, 'product_id' => $plenty->id,
             'type' => StockMovement::TYPE_RECEIVE, 'quantity' => '100', 'created_by' => $user->id,
@@ -256,7 +255,7 @@ class QueryCountTest extends TestCase
 
         $lines = [];
         for ($i = 0; $i < 6; $i++) {
-            $product = Product::factory()->create(['business_id' => $this->business->id, 'selling_price' => '10.00']);
+            $product = Product::factory()->create(['business_id' => $this->business->id]);
             StockMovement::create([
                 'business_id' => $this->business->id, 'product_id' => $product->id,
                 'type' => StockMovement::TYPE_RECEIVE, 'quantity' => '50', 'created_by' => $user->id,

@@ -44,15 +44,11 @@ function buildProduct(overrides: Partial<Product>): Product {
     // The form's category rule requires a chosen category (id > 0).
     categoryId: 1,
     categoryName: "Drinks",
-    costPrice: 10,
-    sellingPrice: 15,
-    taxRate: 0,
     stock: 12,
     lowStockThreshold: 5,
     unit: "piece",
     status: "active",
     image: null,
-    description: null,
     createdAt: "2026-01-01T00:00:00.000000Z",
     updatedAt: "2026-01-01T00:00:00.000000Z",
     ...overrides,
@@ -113,7 +109,7 @@ describe("ProductFormDialog — product fields", () => {
       target: { value: "New Product" },
     });
     // Required numeric fields, filled with the same values the form expects.
-    for (const label of ["Cost price", "Selling price", "Low stock threshold"]) {
+    for (const label of ["Low stock threshold"]) {
       fireEvent.change(screen.getByLabelText(label), { target: { value: "10" } });
     }
     await selectFirstCategory();
@@ -146,10 +142,10 @@ describe("ProductFormDialog — product fields", () => {
     render(<ProductFormDialog target={{ mode: "add" }} onOpenChange={vi.fn()} />);
 
     fireEvent.change(screen.getByLabelText("Product name"), {
-      target: { value: "Needs Prices" },
+      target: { value: "Needs Threshold" },
     });
 
-    // Cost/selling price left empty → "Required" failures on submit.
+    // Low stock threshold left empty → "Required" failure on submit.
     fireEvent.click(screen.getByRole("button", { name: "Save product" }));
 
     await waitFor(() => {
@@ -158,6 +154,6 @@ describe("ProductFormDialog — product fields", () => {
 
     // The dialog never closes on failure and the entered data survives.
     expect(createProduct).not.toHaveBeenCalled();
-    expect((screen.getByLabelText("Product name") as HTMLInputElement).value).toBe("Needs Prices");
+    expect((screen.getByLabelText("Product name") as HTMLInputElement).value).toBe("Needs Threshold");
   });
 });

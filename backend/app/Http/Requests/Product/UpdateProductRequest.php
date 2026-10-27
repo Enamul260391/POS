@@ -45,10 +45,6 @@ class UpdateProductRequest extends FormRequest
             'name' => ['sometimes', 'required', 'string', 'max:150'],
             'sku' => ['sometimes', 'nullable', 'string', 'max:50', $this->uniqueRule('sku')],
             'barcode' => ['sometimes', 'nullable', 'string', 'max:100', $this->uniqueRule('barcode')],
-            'description' => ['sometimes', 'nullable', 'string', 'max:1000'],
-            'cost_price' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:9999999999999.99', 'decimal:0,2'],
-            'selling_price' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:9999999999999.99', 'decimal:0,2'],
-            'tax_rate' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100', 'decimal:0,2'],
             'unit' => ['sometimes', 'required', 'string', 'max:20'],
             'low_stock_threshold' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:4294967295'],
             'image' => ['sometimes', 'nullable', 'string', 'max:255'],
@@ -67,7 +63,7 @@ class UpdateProductRequest extends FormRequest
             }
         }
 
-        foreach (['sku', 'barcode', 'description', 'image'] as $key) {
+        foreach (['sku', 'barcode', 'image'] as $key) {
             if ($this->has($key)) {
                 $this->merge([
                     $key => $this->filled($key) ? trim((string) $this->input($key)) : null,

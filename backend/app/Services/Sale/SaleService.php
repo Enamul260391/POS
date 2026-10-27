@@ -205,7 +205,7 @@ final class SaleService
                             'product_id' => $line['product']->getKey(),
                             'quantity' => $split['quantity'],
                             'unit_price' => $line['unit_price'],
-                            'unit_cost' => Money::format($split['batch']->cost_price ?? $line['product']->cost_price),
+                            'unit_cost' => Money::format($split['batch']->cost_price),
                             'discount' => $money['discount'],
                             'tax' => $money['tax'],
                             'total' => $money['total'],
@@ -240,7 +240,7 @@ final class SaleService
                     if (($line['allocated'] ?? false) && is_array($line['splits'] ?? null) && count($line['splits'] ?? []) === 1) {
                         $batch = $line['splits'][0]['batch'];
                         $batchId = (int) $batch->getKey();
-                        $unitCost = Money::format($batch->cost_price ?? $line['product']->cost_price);
+                        $unitCost = Money::format($batch->cost_price);
                     } else {
                         // Legacy explicit batch_id path (pre-STEP-4 clients):
                         // allocate the named batch and authorise its price so
@@ -248,7 +248,7 @@ final class SaleService
                         $batch = $this->batches
                             ->allocate($businessId, (int) $line['product']->getKey(), (int) $line['batch_id'], $line['quantity']);
                         $batchId = (int) $batch->getKey();
-                        $unitCost = Money::format($batch->cost_price ?? $line['product']->cost_price);
+                        $unitCost = Money::format($batch->cost_price);
                     }
                 }
 
@@ -428,7 +428,7 @@ final class SaleService
             }
 
             $quantity = Quantity::format($item['quantity']);
-            $unitPrice = Money::format($item['unit_price'] ?? $product->selling_price);
+            $unitPrice = Money::format($item['unit_price'] ?? '0');
             $lineGross = Money::multiply($quantity, $unitPrice);
             $discount = Money::format($item['discount'] ?? 0);
             if (Money::greaterThan($discount, $lineGross)) {
@@ -470,7 +470,9 @@ final class SaleService
                 // historical profit report reads the cost that was actually
                 // incurred rather than whatever the product costs today.
                 // Batch splits override this per physical batch at persist time.
-                'unit_cost' => Money::format($product->cost_price),
+                // For products without batch history, the latest purchase/batch
+                // cost is used; otherwise null (no cost recorded yet).
+                'unit_cost' => Money::format($this->latestBatchCost($product)),
                 'discount' => $discount,
                 'tax' => $tax,
                 'total' => Money::add(Money::subtract($lineGross, $discount), $tax),
@@ -481,6 +483,27 @@ final class SaleService
         }
 
         return $lines;
+    }
+
+    /**
+     * Return the latest batch cost for a product, or null if none exists.
+     *
+     * Pricing now lives on inventory batches and purchase items, not on the
+     * product itself. When a sale references a product with no batch history,
+     * fall back to the most recent batch cost so the sale line still carries
+     * a cost snapshot.
+     *
+     * @return string|null
+     */
+    private function latestBatchCost(Product $product): ?string
+    {
+        $batch = InventoryBatch::query()
+            ->forBusiness((int) $product->business_id)
+            ->where('product_id', $product->getKey())
+            ->orderByDesc('id')
+            ->first();
+
+        return $batch?->cost_price;
     }
 
     /**
@@ -523,7 +546,6 @@ final class SaleService
         ?int $batchId,
     ): array {
         $productId = (int) $product->getKey();
-        $fallback = Money::format($product->selling_price);
 
         if (! $this->batches->hasHistory($businessId, $productId)) {
             return ['unit_price' => $unitPrice, 'batch_id' => null, 'splits' => null];
@@ -535,7 +557,7 @@ final class SaleService
             throw new BusinessRuleException(self::INSUFFICIENT_BATCH_MESSAGE, 409);
         }
 
-        $options = $this->batches->priceOptions($eligible, $fallback);
+        $options = $this->batches->priceOptions($eligible);
 
         if ($options === []) {
             throw new BusinessRuleException(self::INSUFFICIENT_BATCH_MESSAGE, 409);
@@ -560,7 +582,7 @@ final class SaleService
                 throw new BusinessRuleException('The selected batch does not belong to the product of this sale line.', 422);
             }
 
-            $chosenPrice = $chosen->selling_price !== null ? Money::format($chosen->selling_price) : $fallback;
+            $chosenPrice = Money::format($chosen->selling_price);
             if ($chosenPrice === null || ! Money::equals($unitPrice, $chosenPrice)) {
                 throw new BusinessRuleException('The selling price does not match the selected batch price.', 422);
             }
@@ -606,7 +628,7 @@ final class SaleService
             // price, and never a single unit from another price. A shortfall
             // here is the combined shortfall of that price, reported with the
             // basket-level message.
-            $allocations = $this->batches->allocateAtPrice($businessId, $productId, $selectedPrice, $quantity, $fallback);
+            $allocations = $this->batches->allocateAtPrice($businessId, $productId, $selectedPrice, $quantity);
 
             $splits = [];
             foreach ($allocations as $allocation) {

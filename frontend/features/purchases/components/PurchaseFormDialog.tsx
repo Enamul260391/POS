@@ -108,7 +108,7 @@ interface PurchaseLineRowProps {
   lineTotal: number;
   canRemove: boolean;
   onRemove: () => void;
-  /** Pre-fills the cost from `product.costPrice` when a product is picked. */
+  /** Pre-fills the cost from the batch/purchase line when a product is picked. */
   onProductChange: (index: number, productId: number) => void;
 }
 
@@ -344,10 +344,9 @@ export function PurchaseFormDialog({ onOpenChange }: PurchaseFormDialogProps) {
   const handleProductChange = (index: number, productId: number) => {
     const product = products.find((candidate) => candidate.id === productId);
     if (product !== undefined) {
-      // Sensible default the buyer can still override for this order.
-      setValue(`items.${index}.unitCost`, product.costPrice, {
-        shouldDirty: true,
-      });
+      // No product-level cost_price anymore: the buyer enters the unit cost
+      // from the batch/purchase line. Left blank so it must be filled before
+      // saving.
     }
   };
 

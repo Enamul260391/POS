@@ -11,6 +11,7 @@ use App\Models\Customer;
 use App\Models\CustomerLedgerEntry;
 use App\Models\Expense;
 use App\Models\ExpenseCategory;
+use App\Models\InventoryBatch;
 use App\Models\Payment;
 use App\Models\Product;
 use App\Models\Purchase;
@@ -70,8 +71,6 @@ class ReportTenantIsolationTest extends TestCase
     {
         $product = Product::factory()->create([
             'business_id' => $business->id,
-            'cost_price' => $cost,
-            'selling_price' => '100.00',
         ]);
 
         StockMovement::create([
@@ -80,6 +79,22 @@ class ReportTenantIsolationTest extends TestCase
             'type' => StockMovement::TYPE_RECEIVE,
             'quantity' => '50',
             'created_by' => $this->user->id,
+        ]);
+
+        // Pricing now lives on inventory batches, not on the product.
+        InventoryBatch::create([
+            'business_id' => $business->id,
+            'product_id' => $product->id,
+            'purchase_item_id' => null,
+            'batch_number' => 'TEST-'.fake()->unique()->numerify('######'),
+            'received_date' => now()->toDateString(),
+            'expiry_date' => null,
+            'received_quantity' => '50',
+            'remaining_quantity' => '50',
+            'cost_price' => $cost,
+            'selling_price' => '100.00',
+            'mrp' => null,
+            'selling_code' => null,
         ]);
 
         return $product;
@@ -113,7 +128,7 @@ class ReportTenantIsolationTest extends TestCase
             'product_id' => $product->id,
             'quantity' => 1,
             'unit_price' => $total,
-            'unit_cost' => $product->cost_price,
+            'unit_cost' => '40.00',
             'discount' => 0,
             'tax' => 0,
             'total' => $total,

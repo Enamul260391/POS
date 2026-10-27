@@ -23,9 +23,6 @@ export function toProduct(payload: ProductPayload): Product {
     barcode: toText(payload.barcode),
     categoryId: payload.category_id,
     categoryName: payload.category?.name ?? null,
-    costPrice: toMoney(payload.cost_price),
-    sellingPrice: toMoney(payload.selling_price),
-    taxRate: toMoney(payload.tax_rate),
     // `null` means the query did not select the aggregate; a product with no
     // ledger row legitimately holds nothing, so both read as `0`.
     stock: toQuantity(payload.current_stock),
@@ -33,7 +30,6 @@ export function toProduct(payload: ProductPayload): Product {
     unit: toProductUnit(payload.unit),
     status: payload.status === "active" ? "active" : "inactive",
     image: toText(payload.image),
-    description: toText(payload.description),
     createdAt: payload.created_at,
     updatedAt: payload.updated_at,
   };

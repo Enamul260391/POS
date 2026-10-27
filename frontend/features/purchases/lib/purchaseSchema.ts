@@ -125,9 +125,7 @@ export type PurchaseLineFormInput = PurchaseFormInput["items"][number];
 /**
  * Blank line for "Add row": quantity starts at 1 (the usual restock) and the
  * cost is `NaN`, which the number input renders empty — a forgotten cost then
- * fails validation as "Required" instead of silently ordering for free. The
- * dialog pre-fills it from `product.costPrice` when a product is picked.
- *
+ * fails validation as "Required" instead of silently ordering for free.
  * MRP and selling price start as `NaN` (rendered empty, validated as absent)
  * and the selling code starts empty — never prefilled from the global product.
  * The `satisfies` keeps the blank assignable to the schema *input* (where

@@ -76,7 +76,8 @@ export interface InventorySummary {
   productsInStock: number;
   /** Sum of tracked stock quantities (mixed units — an order of magnitude indicator). */
   totalUnits: number;
-  /** Value of tracked stock at cost: `Σ stock × costPrice`. */
+  /** Value of tracked stock at cost: not computed from product-level pricing
+   * (removed); inventory valuation comes from purchase/batch data. */
   stockValue: number;
   /** Tracked products at or below their low-stock threshold (and not empty). */
   lowStock: Product[];
@@ -101,7 +102,8 @@ export function summarizeInventory(products: readonly Product[]): InventorySumma
     }
     summary.trackedCount += 1;
     summary.totalUnits += product.stock;
-    summary.stockValue += product.stock * product.costPrice;
+    // stockValue intentionally 0: product-level cost_price was removed; valuation
+    // comes from batch/purchase data, not the product row.
 
     const level = stockLevel(product);
     if (level === "out") {

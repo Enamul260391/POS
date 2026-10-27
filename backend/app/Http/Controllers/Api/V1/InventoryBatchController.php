@@ -70,7 +70,7 @@ class InventoryBatchController extends Controller
             ->firstOrFail();
 
         $eligible = $this->batches->eligibleForProduct($businessId, (int) $row->getKey());
-        $options = $this->batches->priceOptions($eligible, Money::format($row->selling_price));
+        $options = $this->batches->priceOptions($eligible);
 
         return ApiResponse::success([
             'product_id' => (int) $row->getKey(),

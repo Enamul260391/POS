@@ -6,6 +6,7 @@ namespace Tests\Feature\Report;
 
 use App\Models\Business;
 use App\Models\Customer;
+use App\Models\InventoryBatch;
 use App\Models\Payment;
 use App\Models\Product;
 use App\Models\Sale;
@@ -65,8 +66,6 @@ class ReportSalesReturnsPolicyTest extends TestCase
     {
         $product = Product::factory()->create([
             'business_id' => $this->business->id,
-            'cost_price' => $cost,
-            'selling_price' => $price,
         ]);
 
         StockMovement::create([
@@ -75,6 +74,22 @@ class ReportSalesReturnsPolicyTest extends TestCase
             'type' => StockMovement::TYPE_RECEIVE,
             'quantity' => '100',
             'created_by' => $this->user->id,
+        ]);
+
+        // Pricing now lives on inventory batches, not on the product.
+        InventoryBatch::create([
+            'business_id' => $this->business->id,
+            'product_id' => $product->id,
+            'purchase_item_id' => null,
+            'batch_number' => 'TEST-'.fake()->unique()->numerify('######'),
+            'received_date' => self::DAY,
+            'expiry_date' => null,
+            'received_quantity' => '100',
+            'remaining_quantity' => '100',
+            'cost_price' => $cost,
+            'selling_price' => $price,
+            'mrp' => null,
+            'selling_code' => null,
         ]);
 
         return $product;
@@ -362,7 +377,7 @@ class ReportSalesReturnsPolicyTest extends TestCase
 
         $this->returnLine($sale['id'], $items[0], '3');
 
-        $product->forceFill(['cost_price' => '500.00'])->save();
+
 
         $this->report('profit-loss')
             ->assertStatus(200)

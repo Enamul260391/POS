@@ -10,6 +10,7 @@ use App\Models\CashRegisterTransaction;
 use App\Models\Customer;
 use App\Models\CustomerLedgerEntry;
 use App\Models\Payment;
+use App\Models\InventoryBatch;
 use App\Models\Permission;
 use App\Models\Product;
 use App\Models\Role;
@@ -70,8 +71,6 @@ class SaleReturnSettlementTest extends TestCase
     {
         $product = Product::factory()->create([
             'business_id' => $this->business->id,
-            'selling_price' => $sellingPrice,
-            'cost_price' => $costPrice,
         ]);
 
         StockMovement::create([
@@ -80,6 +79,22 @@ class SaleReturnSettlementTest extends TestCase
             'type' => StockMovement::TYPE_RECEIVE,
             'quantity' => '100',
             'created_by' => $this->user->id,
+        ]);
+
+        // Pricing now lives on inventory batches, not on the product.
+        InventoryBatch::create([
+            'business_id' => $this->business->id,
+            'product_id' => $product->id,
+            'purchase_item_id' => null,
+            'batch_number' => 'TEST-'.fake()->unique()->numerify('######'),
+            'received_date' => now()->toDateString(),
+            'expiry_date' => null,
+            'received_quantity' => '100',
+            'remaining_quantity' => '100',
+            'cost_price' => $costPrice,
+            'selling_price' => $sellingPrice,
+            'mrp' => null,
+            'selling_code' => null,
         ]);
 
         return $product;

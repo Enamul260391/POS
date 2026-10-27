@@ -9,7 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { formatMoney, formatQuantity } from "@/features/pos/lib/format";
+import { formatQuantity } from "@/features/pos/lib/format";
 import { StockBadge } from "@/features/products/components/StockBadge";
 import { STATUS_OPTIONS, UNIT_OPTIONS } from "@/features/products/lib/productSchema";
 import { categoryPath } from "@/features/products/lib/products";
@@ -37,8 +37,8 @@ function DetailRow({ term, value }: { term: string; value: string }) {
 /**
  * Read-only product detail view (the "View" action).
  *
- * Everything the tables truncate or omit — full barcode, description,
- * thresholds, timestamps — is readable here without entering edit mode.
+ * Everything the tables truncate or omit — full barcode, thresholds, timestamps —
+ * is readable here without entering edit mode.
  * Mounted only while open, like the form dialog.
  */
 export function ProductViewDialog({
@@ -80,8 +80,6 @@ export function ProductViewDialog({
           <DetailRow term="Barcode" value={product.barcode ?? "—"} />
           <DetailRow term="Category" value={categoryPath(categories, product.categoryId)} />
           <DetailRow term="Unit" value={unitLabel} />
-          <DetailRow term="Cost price" value={formatMoney(product.costPrice)} />
-          <DetailRow term="Selling price" value={formatMoney(product.sellingPrice)} />
           <DetailRow
             term="Stock"
             value={
@@ -90,7 +88,6 @@ export function ProductViewDialog({
                 : `${formatQuantity(product.stock)} ${unitLabel} · low at ≤ ${formatQuantity(product.lowStockThreshold)}`
             }
           />
-          <DetailRow term="Description" value={product.description ?? "—"} />
           <DetailRow term="Created" value={formatLocalDateTime(product.createdAt)} />
           <DetailRow term="Updated" value={formatLocalDateTime(product.updatedAt)} />
         </dl>

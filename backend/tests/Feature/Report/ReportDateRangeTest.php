@@ -222,8 +222,6 @@ class ReportDateRangeTest extends TestCase
 
         $product = Product::factory()->create([
             'business_id' => $business->id,
-            'cost_price' => '5.00',
-            'selling_price' => '10.00',
         ]);
 
         StockMovement::create([

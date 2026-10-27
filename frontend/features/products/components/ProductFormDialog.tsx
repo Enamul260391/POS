@@ -62,7 +62,7 @@ const ACTION_OPTION_VALUE = "__action__";
 const CREATE_CATEGORY_LABEL = "+ Create new category";
 
 /** Form fields backed by a numeric input. */
-type NumericFieldName = "costPrice" | "sellingPrice" | "lowStockThreshold";
+type NumericFieldName = "lowStockThreshold";
 
 /** Form fields backed by a Select. */
 type SelectFieldName = "categoryId" | "unit" | "status";
@@ -257,8 +257,6 @@ const PRODUCT_FORM_FIELDS = [
   "sku",
   "barcode",
   "categoryId",
-  "costPrice",
-  "sellingPrice",
   "unit",
   "lowStockThreshold",
   "status",
@@ -435,18 +433,6 @@ export function ProductFormDialog({ target, onOpenChange }: ProductFormDialogPro
               register={register}
               error={errors.lowStockThreshold?.message}
               hint="Alert when stock falls to or below this level."
-            />
-            <NumberField
-              name="costPrice"
-              label="Cost price"
-              register={register}
-              error={errors.costPrice?.message}
-            />
-            <NumberField
-              name="sellingPrice"
-              label="Selling price"
-              register={register}
-              error={errors.sellingPrice?.message}
             />
 
             <div className="grid gap-1.5 sm:col-span-2">

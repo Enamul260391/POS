@@ -13,7 +13,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatMoney } from "@/features/pos/lib/format";
 import {
   categoryPath,
   stockLevel,
@@ -88,8 +87,6 @@ export const ProductTable = memo(function ProductTable({
             <TableHead>SKU</TableHead>
             <TableHead>Barcode</TableHead>
             <TableHead>Category</TableHead>
-            <TableHead className="text-right">Cost price</TableHead>
-            <TableHead className="text-right">Selling price</TableHead>
             <TableHead className="text-right">Stock</TableHead>
             <TableHead>Status</TableHead>
             <TableHead className="text-right">Actions</TableHead>
@@ -144,12 +141,6 @@ const ProductRow = memo(function ProductRow({
         <span className="block truncate" title={categoryPath(categories, product.categoryId)}>
           {categoryPath(categories, product.categoryId)}
         </span>
-      </TableCell>
-      <TableCell className="text-right tabular-nums text-muted-foreground">
-        {formatMoney(product.costPrice)}
-      </TableCell>
-      <TableCell className="text-right font-medium tabular-nums">
-        {formatMoney(product.sellingPrice)}
       </TableCell>
       <TableCell>
         <div className="flex justify-end">

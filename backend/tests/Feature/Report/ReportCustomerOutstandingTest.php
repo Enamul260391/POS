@@ -135,8 +135,6 @@ class ReportCustomerOutstandingTest extends TestCase
     {
         $product = Product::factory()->create([
             'business_id' => $this->business->id,
-            'cost_price' => '40.00',
-            'selling_price' => '100.00',
         ]);
 
         StockMovement::create([
@@ -162,7 +160,7 @@ class ReportCustomerOutstandingTest extends TestCase
             'product_id' => $product->id,
             'quantity' => 1,
             'unit_price' => $total,
-            'unit_cost' => $product->cost_price,
+            'unit_cost' => '0.00',
             'discount' => 0,
             'tax' => 0,
             'total' => $total,
@@ -1662,8 +1660,6 @@ class ReportCustomerOutstandingTest extends TestCase
     {
         $product = Product::factory()->create([
             'business_id' => $this->business->id,
-            'cost_price' => '40.00',
-            'selling_price' => '100.00',
         ]);
 
         StockMovement::create([

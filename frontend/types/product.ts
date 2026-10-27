@@ -51,12 +51,6 @@ export interface Product {
   categoryId: number | null;
   /** Category name, when the API embedded the relation. */
   categoryName: string | null;
-  /** Purchase price per unit, used for profit reporting. */
-  costPrice: number;
-  /** Regular selling price per unit. */
-  sellingPrice: number;
-  /** VAT percentage configured on the product. */
-  taxRate: number;
   /**
    * Quantity currently available, expressed in `unit`.
    *
@@ -72,8 +66,6 @@ export interface Product {
   status: ProductStatus;
   /** Storage path or public URL of the product image. */
   image: string | null;
-  /** Optional longer description shown on the product detail screen. */
-  description: string | null;
   /** ISO 8601 timestamp of creation. */
   createdAt: string;
   /** ISO 8601 timestamp of the last update. */
@@ -93,10 +85,6 @@ export interface ProductPayload {
   name: string;
   sku: string | null;
   barcode: string | null;
-  description: string | null;
-  cost_price: string;
-  selling_price: string;
-  tax_rate: string;
   unit: string;
   low_stock_threshold: number;
   image: string | null;

@@ -33,7 +33,7 @@ class SalePaymentPhase22Test extends TestCase
         parent::setUp();
         $this->business = Business::factory()->create();
         $this->user = $this->actingAsBusinessUser($this->business);
-        $this->product = Product::factory()->create(['business_id' => $this->business->id, 'selling_price' => '500.00']);
+        $this->product = Product::factory()->create(['business_id' => $this->business->id]);
         StockMovement::create(['business_id' => $this->product->business_id, 'product_id' => $this->product->id, 'type' => 'receive', 'quantity' => '50', 'created_by' => $this->user->id]);
         $this->otherBusiness = Business::factory()->create();
         $this->otherUser = User::factory()->create(['business_id' => $this->otherBusiness->id]);

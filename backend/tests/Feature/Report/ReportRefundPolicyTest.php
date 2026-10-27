@@ -64,8 +64,6 @@ class ReportRefundPolicyTest extends TestCase
     {
         $product = Product::factory()->create([
             'business_id' => $this->business->id,
-            'cost_price' => $cost,
-            'selling_price' => $price,
         ]);
 
         StockMovement::create([

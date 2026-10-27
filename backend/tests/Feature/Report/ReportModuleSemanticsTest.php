@@ -380,8 +380,6 @@ class ReportModuleSemanticsTest extends TestCase
     {
         $product = Product::factory()->create([
             'business_id' => $this->business->id,
-            'cost_price' => '40.00',
-            'selling_price' => '100.00',
             'low_stock_threshold' => 0,
         ]);
         $this->movement($product, '100');
@@ -449,7 +447,6 @@ class ReportModuleSemanticsTest extends TestCase
     {
         $product = Product::factory()->create([
             'business_id' => $this->business->id,
-            'cost_price' => '42.00',
         ]);
         $this->movement($product, '10');
 

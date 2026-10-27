@@ -23,10 +23,6 @@ use Illuminate\Support\Arr;
 final class ProductService
 {
     /** Columns a client may sort by — nothing else ever reaches `orderBy()`. */
-    public const SORTABLE_COLUMNS = [
-        'name', 'sku', 'selling_price', 'cost_price',
-        'low_stock_threshold', 'status', 'created_at', 'id',
-    ];
 
     public const DEFAULT_SORT_COLUMN = 'created_at';
 
@@ -36,14 +32,27 @@ final class ProductService
 
     public const MAX_PER_PAGE = 100;
 
+    /** Columns a client may sort by — nothing else ever reaches `orderBy()`. */
+    public const SORTABLE_COLUMNS = [
+        'created_at',
+        'name',
+        'sku',
+        'barcode',
+        'status',
+    ];
+
     /** Unit applied when the client does not choose one (column default). */
     public const DEFAULT_UNIT = 'pcs';
 
     /** Master-data columns a client may change. */
-    private const EDITABLE_COLUMNS = [
-        'category_id', 'name', 'sku', 'barcode', 'description',
-        'cost_price', 'selling_price', 'tax_rate', 'unit',
-        'low_stock_threshold', 'image', 'status',
+    public const EDITABLE_COLUMNS = [
+        'name',
+        'sku',
+        'barcode',
+        'unit',
+        'low_stock_threshold',
+        'image',
+        'status',
     ];
 
     public function __construct(
@@ -209,10 +218,6 @@ final class ProductService
             'name' => $data['name'],
             'sku' => $data['sku'] ?? null,
             'barcode' => $data['barcode'] ?? null,
-            'description' => $data['description'] ?? null,
-            'cost_price' => $data['cost_price'] ?? 0,
-            'selling_price' => $data['selling_price'] ?? 0,
-            'tax_rate' => $data['tax_rate'] ?? 0,
             'unit' => $data['unit'] ?? self::DEFAULT_UNIT,
             'low_stock_threshold' => $data['low_stock_threshold'] ?? 0,
             'image' => $data['image'] ?? null,

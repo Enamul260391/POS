@@ -8,7 +8,7 @@ import {
   stockStatus,
   type StockStatus,
 } from "@/features/pos/lib/catalog";
-import { formatMoney, formatQuantity } from "@/features/pos/lib/format";
+import { formatQuantity } from "@/features/pos/lib/format";
 import { useCartStore } from "@/stores/useCartStore";
 import type { Product } from "@/types/product";
 
@@ -95,9 +95,6 @@ export function ProductCard({ product, onAdd }: ProductCardProps) {
         className="flex h-full w-full flex-col gap-1.5 rounded-xl border border-border bg-card p-3 text-left outline-none transition-colors hover:border-foreground/30 hover:bg-muted/40 focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-border disabled:hover:bg-card"
       >
         <span className="flex w-full items-start justify-between gap-2">
-          <span className="font-heading text-base font-semibold">
-            {formatMoney(product.sellingPrice)}
-          </span>
           <StockBadge product={product} remaining={remaining} status={status} />
         </span>
 

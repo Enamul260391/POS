@@ -114,8 +114,6 @@ class ReportDailySalesSeriesTest extends TestCase
     {
         $product = Product::factory()->create([
             'business_id' => $this->business->id,
-            'cost_price' => '60.00',
-            'selling_price' => '100.00',
         ]);
         StockMovement::create([
             'business_id' => $this->business->id,

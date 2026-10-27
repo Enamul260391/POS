@@ -108,9 +108,6 @@ class ProductTest extends TestCase
                         'name',
                         'sku',
                         'barcode',
-                        'cost_price',
-                        'selling_price',
-                        'tax_rate',
                         'unit',
                         'low_stock_threshold',
                         'status',
@@ -284,10 +281,6 @@ class ProductTest extends TestCase
             'name' => 'Espresso Mix',
             'sku' => 'ESP-001',
             'barcode' => '4006381333931',
-            'description' => 'House blend',
-            'cost_price' => 8.50,
-            'selling_price' => 12.99,
-            'tax_rate' => 5,
             'unit' => 'pcs',
             'low_stock_threshold' => 3,
             'status' => Product::STATUS_ACTIVE,
@@ -302,8 +295,7 @@ class ProductTest extends TestCase
                 'data' => [
                     'name' => 'Espresso Mix',
                     'sku' => 'ESP-001',
-                    'cost_price' => '8.50',
-                    'selling_price' => '12.99',
+                    'status' => 'active',
                     'status' => 'active',
                     // Ledger is empty at creation without opening stock.
                     'current_stock' => '0',
@@ -589,7 +581,7 @@ class ProductTest extends TestCase
                 'message' => 'Product updated successfully',
                 'data' => [
                     'name' => 'Renamed Product',
-                    'selling_price' => '19.99',
+                    'name' => 'Renamed Product',
                     'status' => 'inactive',
                 ],
             ]);

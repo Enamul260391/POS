@@ -170,8 +170,6 @@ function toProductInput(values: ProductFormValues) {
     sku: values.sku.trim() || null,
     barcode: values.barcode.trim() || null,
     categoryId: values.categoryId > 0 ? values.categoryId : null,
-    costPrice: values.costPrice,
-    sellingPrice: values.sellingPrice,
     lowStockThreshold: values.lowStockThreshold,
     unit: values.unit,
     status: values.status,

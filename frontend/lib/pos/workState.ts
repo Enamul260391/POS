@@ -162,10 +162,6 @@ function toSnapshot(product: Product | CartItemProduct): CartItemProduct | null 
   if (typeof product.unit !== "string" || !product.unit) {
     return null;
   }
-  const sellingPrice = Number(product.sellingPrice);
-  if (!Number.isFinite(sellingPrice) || sellingPrice < 0) {
-    return null;
-  }
   if (product.status !== "active") {
     // A persisted inactive line is never restored: the POS must not sell it.
     return null;
@@ -176,11 +172,6 @@ function toSnapshot(product: Product | CartItemProduct): CartItemProduct | null 
     sku: typeof product.sku === "string" ? product.sku : "",
     barcode: typeof product.barcode === "string" && product.barcode.trim() ? product.barcode : null,
     unit: product.unit,
-    costPrice:
-      Number.isFinite(Number(product.costPrice)) && Number(product.costPrice) >= 0
-        ? Number(product.costPrice)
-        : 0,
-    sellingPrice,
     image: typeof product.image === "string" && product.image.trim() ? product.image : null,
     status: product.status,
   };

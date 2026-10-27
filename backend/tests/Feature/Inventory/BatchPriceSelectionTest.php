@@ -41,8 +41,6 @@ class BatchPriceSelectionTest extends TestCase
         $this->product = Product::factory()->create([
             'business_id' => $this->business->id,
             'unit' => 'pcs',
-            'cost_price' => '60.00',
-            'selling_price' => '100.00',
         ]);
     }
 

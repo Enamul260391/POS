@@ -34,8 +34,6 @@ const echoedPayload = {
   sku: null,
   barcode: null,
   description: null,
-  cost_price: "0.00",
-  selling_price: "0.00",
   tax_rate: "0.00",
   unit: "pcs",
   low_stock_threshold: 0,

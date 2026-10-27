@@ -13,8 +13,6 @@ const validValues = {
   name: "Coca-Cola 500ml",
   // The form's category rule requires a chosen category (id > 0).
   categoryId: 1,
-  costPrice: 10,
-  sellingPrice: 15,
   lowStockThreshold: 5,
 };
 
@@ -27,15 +25,11 @@ function buildProduct(overrides: Partial<Product>): Product {
     barcode: "8901234501234",
     categoryId: null,
     categoryName: null,
-    costPrice: 10,
-    sellingPrice: 15,
-    taxRate: 0,
     stock: 12,
     lowStockThreshold: 5,
     unit: "piece",
     status: "active",
     image: null,
-    description: null,
     createdAt: "2026-01-01T00:00:00.000000Z",
     updatedAt: "2026-01-01T00:00:00.000000Z",
     ...overrides,

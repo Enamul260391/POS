@@ -25,8 +25,6 @@ export type CartItemProduct = Pick<
   | "sku"
   | "barcode"
   | "unit"
-  | "costPrice"
-  | "sellingPrice"
   | "image"
   | "status"
 >;
@@ -46,7 +44,7 @@ export interface CartItem {
    * based units such as `kilogram` or `liter`.
    */
   quantity: number;
-  /** Price used for this line: `product.sellingPrice` unless overridden. */
+  /** Price used for this line: set from batch pricing when added unless overridden. */
   unitPrice: number;
   /**
    * Batch row the line was allocated from, when the sale needs an explicit

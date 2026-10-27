@@ -206,19 +206,12 @@ function toCartItemProduct(product: Product | null | undefined): CartItemProduct
     return null;
   }
 
-  if (!Number.isFinite(product.sellingPrice) || product.sellingPrice < 0) {
-    return null;
-  }
-
   return {
     id: product.id,
     name: product.name,
     sku: typeof product.sku === "string" ? product.sku : "",
     barcode: typeof product.barcode === "string" && product.barcode.trim() ? product.barcode : null,
     unit: product.unit,
-    costPrice:
-      Number.isFinite(product.costPrice) && product.costPrice >= 0 ? roundMoney(product.costPrice) : 0,
-    sellingPrice: roundMoney(product.sellingPrice),
     image: typeof product.image === "string" && product.image.trim() ? product.image : null,
     status: product.status,
   };
@@ -445,7 +438,7 @@ export type CartActionResult =
 export interface AddProductOptions {
   /** Quantity to add; defaults to `1` and is validated per unit of measure. */
   quantity?: number;
-  /** Price override for this line; defaults to `product.sellingPrice`. */
+  /** Price override for this line; defaults to batch pricing when added. */
   unitPrice?: number;
   /**
    * Batch row the line was allocated from. `null` means the automatic
@@ -595,7 +588,7 @@ export const useCartStore = create<CartStore>()((set, get) => ({
       return { ok: false, reason: "invalid-quantity" };
     }
 
-    const unitPrice = normalizeUnitPrice(options.unitPrice ?? snapshot.sellingPrice);
+    const unitPrice = normalizeUnitPrice(options.unitPrice ?? 0);
 
     if (unitPrice === null) {
       return { ok: false, reason: "invalid-unit-price" };

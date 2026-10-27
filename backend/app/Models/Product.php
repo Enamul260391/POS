@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use Database\Factories\ProductFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -38,10 +37,6 @@ class Product extends Model
         'name',
         'sku',
         'barcode',
-        'description',
-        'cost_price',
-        'selling_price',
-        'tax_rate',
         'unit',
         'low_stock_threshold',
         'image',
@@ -51,9 +46,6 @@ class Product extends Model
     protected function casts(): array
     {
         return [
-            'cost_price' => 'decimal:2',
-            'selling_price' => 'decimal:2',
-            'tax_rate' => 'decimal:2',
             'low_stock_threshold' => 'integer',
             'status' => 'string',
             'business_id' => 'integer',

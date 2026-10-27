@@ -8,6 +8,7 @@ use App\Models\Business;
 use App\Models\CashRegister;
 use App\Models\CashRegisterTransaction;
 use App\Models\Payment;
+use App\Models\InventoryBatch;
 use App\Models\Permission;
 use App\Models\Product;
 use App\Models\Role;
@@ -15,6 +16,7 @@ use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\SaleReturn;
 use App\Models\StockMovement;
+use App\Models\Supplier;
 use App\Models\User;
 use App\Services\Permission\PermissionService;
 use App\Support\Money;
@@ -60,8 +62,6 @@ class SaleReturnTest extends TestCase
     {
         $product = Product::factory()->create([
             'business_id' => $this->business->id,
-            'selling_price' => $sellingPrice,
-            'cost_price' => $costPrice,
         ]);
 
         StockMovement::create([
@@ -70,6 +70,23 @@ class SaleReturnTest extends TestCase
             'type' => StockMovement::TYPE_RECEIVE,
             'quantity' => '100',
             'created_by' => $this->user->id,
+        ]);
+
+        // Pricing now lives on inventory batches. Stock in at the given cost
+        // so sales through the API capture unit_cost from the batch snapshot.
+        InventoryBatch::create([
+            'business_id' => $this->business->id,
+            'product_id' => $product->id,
+            'purchase_item_id' => null,
+            'batch_number' => 'TEST-'.fake()->unique()->numerify('######'),
+            'received_date' => now()->toDateString(),
+            'expiry_date' => null,
+            'received_quantity' => '100',
+            'remaining_quantity' => '100',
+            'cost_price' => $costPrice,
+            'selling_price' => $sellingPrice,
+            'mrp' => null,
+            'selling_code' => null,
         ]);
 
         return $product;
@@ -711,12 +728,34 @@ class SaleReturnTest extends TestCase
     {
         $this->openRegister();
         $product = $this->product('60.00', '100.00');
+
+        // Stock in at cost ৳60 so the sale captures it as unit_cost snapshot.
+        $supplier = Supplier::factory()->create(['business_id' => $this->business->id]);
+        $this->postJson('/api/v1/purchases', [
+            'supplier_id' => $supplier->id,
+            'purchase_date' => now()->toDateString(),
+            'items' => [[
+                'product_id' => $product->id,
+                'quantity' => '100',
+                'unit_cost' => '60.00',
+                'selling_price' => '100.00',
+            ]],
+        ])->assertStatus(201);
+
         [$sale, $itemIds] = $this->cashSale($product);
 
-        // The product is repriced after the sale. The return must still value the
-        // reversal at the ৳60 the invoice recorded, not the ৳80 it costs now.
-        $product->update(['cost_price' => '80.00']);
-        $this->assertSame('80.00', Money::format($product->fresh()->cost_price));
+        // A later purchase costs ৳80. The return must still value the reversal
+        // at the ৳60 the invoice recorded, not the ৳80 from the new batch.
+        $this->postJson('/api/v1/purchases', [
+            'supplier_id' => $supplier->id,
+            'purchase_date' => now()->toDateString(),
+            'items' => [[
+                'product_id' => $product->id,
+                'quantity' => '100',
+                'unit_cost' => '80.00',
+                'selling_price' => '100.00',
+            ]],
+        ])->assertStatus(201);
 
         $ret = $this->returnSale($sale['id'], $this->line($itemIds[0], 10));
 

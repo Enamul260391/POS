@@ -9,6 +9,7 @@ use App\Models\Category;
 use App\Models\Customer;
 use App\Models\Expense;
 use App\Models\ExpenseCategory;
+use App\Models\InventoryBatch;
 use App\Models\Payment;
 use App\Models\Product;
 use App\Models\Purchase;
@@ -324,27 +325,27 @@ class LocalDemoSeeder extends Seeder
     {
         $service = app(ProductService::class);
 
-        // key => [category, name, cost, sell, low-stock threshold, description]
+        // key => [category, name, low-stock threshold]
         $definitions = [
-            'mouse' => ['electronics', 'Wireless Mouse', '250.00', '400.00', 10, 'Silent-click 2.4GHz wireless mouse.'],
-            'cable' => ['electronics', 'USB-C Cable 1m', '120.00', '200.00', 20, 'Braided USB-C to USB-C charging cable, 1 metre.'],
-            'earbuds' => ['electronics', 'Bluetooth Earbuds', '1200.00', '1800.00', 5, 'True wireless earbuds with charging case.'],
-            'charger' => ['electronics', '20W USB Charger', '450.00', '700.00', 15, 'Compact 20W fast wall charger. Sits below its low-stock threshold.'],
-            'keyboard' => ['electronics', 'Mechanical Keyboard', '2200.00', '3200.00', 5, 'Full-size mechanical keyboard. Never purchased and never sold here, so it reads as out of stock.'],
-            'backpack' => ['accessories', 'Laptop Backpack', '900.00', '1400.00', 5, 'Water-resistant 15-inch laptop backpack.'],
-            'case' => ['accessories', 'Phone Case', '150.00', '300.00', 15, 'Slim shock-absorbing phone case.'],
-            'cleaner' => ['accessories', 'Screen Cleaner Kit', '80.00', '150.00', 30, 'Microfibre screen cleaning kit. Sits below its low-stock threshold.'],
-            'paper' => ['office', 'A4 Paper Ream', '380.00', '550.00', 10, '80gsm A4 printing paper, 500 sheets.'],
-            'pen' => ['office', 'Ballpoint Pen Box', '90.00', '150.00', 25, 'Box of 12 blue ballpoint pens.'],
-            'notes' => ['office', 'Sticky Notes Pack', '60.00', '110.00', 25, 'Pack of 6 self-adhesive note pads. Sits below its low-stock threshold.'],
-            'organiser' => ['office', 'Desk Organiser', '350.00', '600.00', 5, 'Multi-compartment desk organiser.'],
-            'noodles' => ['grocery', 'Instant Noodles 12pk', '300.00', '420.00', 20, 'Pack of 12 instant noodles.'],
-            'tea' => ['grocery', 'Green Tea 25sachet', '180.00', '260.00', 10, 'Box of 25 green tea sachets.'],
+            'mouse' => ['electronics', 'Wireless Mouse', 10],
+            'cable' => ['electronics', 'USB-C Cable 1m', 20],
+            'earbuds' => ['electronics', 'Bluetooth Earbuds', 5],
+            'charger' => ['electronics', '20W USB Charger', 15],
+            'keyboard' => ['electronics', 'Mechanical Keyboard', 5],
+            'backpack' => ['accessories', 'Laptop Backpack', 5],
+            'case' => ['accessories', 'Phone Case', 15],
+            'cleaner' => ['accessories', 'Screen Cleaner Kit', 30],
+            'paper' => ['office', 'A4 Paper Ream', 10],
+            'pen' => ['office', 'Ballpoint Pen Box', 25],
+            'notes' => ['office', 'Sticky Notes Pack', 25],
+            'organiser' => ['office', 'Desk Organiser', 5],
+            'noodles' => ['grocery', 'Instant Noodles 12pk', 20],
+            'tea' => ['grocery', 'Green Tea 25sachet', 10],
         ];
 
         $products = [];
 
-        foreach ($definitions as $key => [$categoryKey, $name, $cost, $sell, $threshold, $description]) {
+        foreach ($definitions as $key => [$categoryKey, $name, $threshold]) {
             $sku = self::SKU_PREFIX.strtoupper($key);
 
             $existing = Product::query()
@@ -360,10 +361,7 @@ class LocalDemoSeeder extends Seeder
                 $existing->fill([
                     'category_id' => $categories[$categoryKey]->getKey(),
                     'name' => $name,
-                    'cost_price' => $cost,
-                    'selling_price' => $sell,
                     'low_stock_threshold' => $threshold,
-                    'description' => $description,
                     'status' => Product::STATUS_ACTIVE,
                 ])->save();
 
@@ -377,10 +375,6 @@ class LocalDemoSeeder extends Seeder
                 'name' => $name,
                 'sku' => $sku,
                 'barcode' => '890'.str_pad((string) (count($products) + 1), 10, '0', STR_PAD_LEFT),
-                'description' => $description,
-                'cost_price' => $cost,
-                'selling_price' => $sell,
-                'tax_rate' => '0.00',
                 'unit' => 'pcs',
                 'low_stock_threshold' => $threshold,
                 'status' => Product::STATUS_ACTIVE,
@@ -709,7 +703,11 @@ class LocalDemoSeeder extends Seeder
             $subtotal = '0.00';
 
             foreach ($lines as $productKey => [$quantity, $unitPrice]) {
-                $price = $unitPrice ?? (string) $products[$productKey]->selling_price;
+                // Products no longer carry a price: the lot's resale price lives
+                // on its inventory batch (the purchase table), so fall back to
+                // that batch price — the same figure the price-options endpoint
+                // would confirm server-side.
+                $price = $unitPrice ?? $this->batchSellingPrice($products[$productKey]);
 
                 $items[] = [
                     'product_id' => (int) $products[$productKey]->getKey(),
@@ -827,6 +825,27 @@ class LocalDemoSeeder extends Seeder
             ->forBusiness((int) $business->getKey())
             ->where('notes', 'like', '%['.self::SALE_TAG.$key.']%')
             ->first();
+    }
+
+    /**
+     * Resale price of the latest inventory batch for a product.
+     *
+     * A `products` row no longer holds a `selling_price`: the price a lot sells
+     * at is the price its purchase batch was bought at, recorded on
+     * `inventory_batches.selling_price` when the purchase was received. Sales
+     * that don't override the unit price lean on this batch price, the same
+     * figure the price-options endpoint would confirm server-side.
+     */
+    private function batchSellingPrice(Product $product): string
+    {
+        /** @var string|null */
+        $price = InventoryBatch::query()
+            ->where('product_id', $product->getKey())
+            ->whereNotNull('selling_price')
+            ->orderByDesc('id')
+            ->value('selling_price');
+
+        return $price === null ? '0.00' : (string) $price;
     }
 
     // -----------------------------------------------------------------

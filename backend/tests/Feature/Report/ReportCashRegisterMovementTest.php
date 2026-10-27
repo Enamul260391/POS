@@ -224,7 +224,6 @@ class ReportCashRegisterMovementTest extends TestCase
     {
         $product = Product::factory()->create([
             'business_id' => $this->business->id,
-            'selling_price' => $sellingPrice,
         ]);
 
         StockMovement::create([
@@ -248,7 +247,7 @@ class ReportCashRegisterMovementTest extends TestCase
         return array_filter([
             'product_id' => $product->getKey(),
             'quantity' => (string) $quantity,
-            'unit_price' => $unitPrice ?? $product->selling_price,
+            'unit_price' => $unitPrice,
         ], static fn ($value): bool => $value !== null);
     }
 

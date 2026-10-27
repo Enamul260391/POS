@@ -32,29 +32,25 @@ function makeProduct(id: number, name: string): Product {
     sku: `SKU-${id}`,
     barcode: null,
     unit: "piece",
-    costPrice: 5,
-    sellingPrice: 10,
     image: null,
     status: "active",
     categoryId: null,
     categoryName: null,
-    description: null,
     stock: 100,
     lowStockThreshold: 5,
-    taxRate: 0,
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
   };
 }
 
-function makeLine(productId: number, quantity: number): CartItem {
+function makeLine(productId: number, quantity: number, unitPrice: number = 10): CartItem {
   const product = makeProduct(productId, `Product ${productId}`);
   return {
     id: `line-${productId}`,
     productId,
     product,
     quantity,
-    unitPrice: product.sellingPrice,
+    unitPrice,
     discount: 0,
     note: null,
   } as unknown as CartItem;

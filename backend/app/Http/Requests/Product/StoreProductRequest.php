@@ -50,10 +50,6 @@ class StoreProductRequest extends FormRequest
             'name' => ['required', 'string', 'max:150'],
             'sku' => ['nullable', 'string', 'max:50', $this->uniqueRule('sku')],
             'barcode' => ['nullable', 'string', 'max:100', $this->uniqueRule('barcode')],
-            'description' => ['nullable', 'string', 'max:1000'],
-            'cost_price' => ['nullable', 'numeric', 'min:0', 'max:9999999999999.99', 'decimal:0,2'],
-            'selling_price' => ['nullable', 'numeric', 'min:0', 'max:9999999999999.99', 'decimal:0,2'],
-            'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100', 'decimal:0,2'],
             'unit' => ['nullable', 'string', 'max:20'],
             'low_stock_threshold' => ['nullable', 'integer', 'min:0', 'max:4294967295'],
             'image' => ['nullable', 'string', 'max:255'],
@@ -73,7 +69,6 @@ class StoreProductRequest extends FormRequest
             'name' => trim((string) $this->input('name')),
             'sku' => $this->filled('sku') ? trim((string) $this->input('sku')) : null,
             'barcode' => $this->filled('barcode') ? trim((string) $this->input('barcode')) : null,
-            'description' => $this->filled('description') ? trim((string) $this->input('description')) : null,
             'image' => $this->filled('image') ? trim((string) $this->input('image')) : null,
         ]);
     }

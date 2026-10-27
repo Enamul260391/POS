@@ -36,8 +36,8 @@ class SalePhase22CTest extends TestCase
         $this->business = Business::factory()->create();
         $this->user = $this->actingAsBusinessUser($this->business);
         $this->customer = Customer::factory()->create(['business_id' => $this->business->id]);
-        $this->product = Product::factory()->create(['business_id' => $this->business->id, 'selling_price' => '500.00']);
-        $this->product2 = Product::factory()->create(['business_id' => $this->business->id, 'selling_price' => '100.00']);
+        $this->product = Product::factory()->create(['business_id' => $this->business->id]);
+        $this->product2 = Product::factory()->create(['business_id' => $this->business->id]);
         $this->otherBusiness = Business::factory()->create();
         StockMovement::create(['business_id' => $this->product->business_id, 'product_id' => $this->product->id, 'type' => 'receive', 'quantity' => '50', 'created_by' => $this->user->id]);
         StockMovement::create(['business_id' => $this->product2->business_id, 'product_id' => $this->product2->id, 'type' => 'receive', 'quantity' => '50', 'created_by' => $this->user->id]);

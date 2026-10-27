@@ -29,7 +29,7 @@ export interface ProductFilters {
   barcode?: string;
   page?: number;
   perPage?: number;
-  sort?: "name" | "sku" | "selling_price" | "cost_price" | "created_at" | "id";
+  sort?: "name" | "sku" | "created_at" | "id";
   direction?: "asc" | "desc";
 }
 
@@ -39,10 +39,6 @@ export interface ProductInput {
   categoryId?: number | null;
   sku?: string | null;
   barcode?: string | null;
-  description?: string | null;
-  costPrice?: number | null;
-  sellingPrice?: number | null;
-  taxRate?: number | null;
   unit?: string | null;
   lowStockThreshold?: number | null;
   image?: string | null;
@@ -84,10 +80,6 @@ function toProductBody(
     category_id: input.categoryId ?? null,
     sku: input.sku ?? null,
     barcode: input.barcode ?? null,
-    description: input.description ?? null,
-    cost_price: input.costPrice ?? null,
-    selling_price: input.sellingPrice ?? null,
-    tax_rate: input.taxRate ?? null,
     unit: input.unit ?? null,
     low_stock_threshold: input.lowStockThreshold ?? null,
     image: input.image ?? null,

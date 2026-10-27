@@ -400,7 +400,7 @@ class ReportTest extends TestCase
      */
     public function profit_loss_report_subtracts_the_snapshotted_cost_of_goods(): void
     {
-        $product = Product::factory()->create(['business_id' => $this->business->id, 'cost_price' => 30, 'selling_price' => 50]);
+        $product = Product::factory()->create(['business_id' => $this->business->id]);
         $sale = Sale::factory()->create(['business_id' => $this->business->id, 'sale_date' => '2026-09-10', 'subtotal' => 200, 'discount' => 0, 'tax' => 0, 'grand_total' => 200, 'paid_amount' => 200, 'due_amount' => 0]);
         // 4 units at a cost of 30 = 120 of COGS against 200 of revenue.
         SaleItem::create(['sale_id' => $sale->id, 'product_id' => $product->id, 'quantity' => 4, 'unit_price' => 50, 'unit_cost' => 30, 'discount' => 0, 'tax' => 0, 'total' => 200]);
@@ -431,7 +431,7 @@ class ReportTest extends TestCase
      */
     public function profit_loss_report_withholds_profit_while_any_line_has_no_recorded_cost(): void
     {
-        $product = Product::factory()->create(['business_id' => $this->business->id, 'cost_price' => 30, 'selling_price' => 50]);
+        $product = Product::factory()->create(['business_id' => $this->business->id]);
         $sale = Sale::factory()->create(['business_id' => $this->business->id, 'sale_date' => '2026-09-10', 'grand_total' => 200, 'paid_amount' => 200]);
         SaleItem::create(['sale_id' => $sale->id, 'product_id' => $product->id, 'quantity' => 4, 'unit_price' => 50, 'unit_cost' => 30, 'discount' => 0, 'tax' => 0, 'total' => 200]);
         // A service line: no product, so no cost was ever captured for it.
@@ -461,7 +461,7 @@ class ReportTest extends TestCase
      */
     public function profit_loss_report_is_tenant_and_window_scoped(): void
     {
-        $product = Product::factory()->create(['business_id' => $this->business->id, 'cost_price' => 10, 'selling_price' => 20]);
+        $product = Product::factory()->create(['business_id' => $this->business->id]);
         $mine = Sale::factory()->create(['business_id' => $this->business->id, 'sale_date' => '2026-09-10', 'grand_total' => 100, 'paid_amount' => 100]);
         SaleItem::create(['sale_id' => $mine->id, 'product_id' => $product->id, 'quantity' => 5, 'unit_price' => 20, 'unit_cost' => 10, 'discount' => 0, 'tax' => 0, 'total' => 100]);
 

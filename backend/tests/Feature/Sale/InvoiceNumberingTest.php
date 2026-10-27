@@ -61,7 +61,6 @@ class InvoiceNumberingTest extends TestCase
         $this->customer = Customer::factory()->create(['business_id' => $this->business->id]);
         $this->product = Product::factory()->create([
             'business_id' => $this->business->id,
-            'selling_price' => '500.00',
         ]);
         StockMovement::create([
             'business_id' => $this->product->business_id,
@@ -421,7 +420,6 @@ class InvoiceNumberingTest extends TestCase
         $customer = Customer::factory()->create(['business_id' => $business->id]);
         $product = Product::factory()->create([
             'business_id' => $business->id,
-            'selling_price' => '500.00',
         ]);
         StockMovement::create([
             'business_id' => $business->id,

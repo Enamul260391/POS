@@ -42,8 +42,8 @@ class SalePhase22ATest extends TestCase
         $this->business = Business::factory()->create();
         $this->user = $this->actingAsBusinessUser($this->business);
         $this->customer = Customer::factory()->create(['business_id' => $this->business->id]);
-        $this->product = Product::factory()->create(['business_id' => $this->business->id, 'selling_price' => '500.00']);
-        $this->product2 = Product::factory()->create(['business_id' => $this->business->id, 'selling_price' => '100.00']);
+        $this->product = Product::factory()->create(['business_id' => $this->business->id]);
+        $this->product2 = Product::factory()->create(['business_id' => $this->business->id]);
         $this->otherBusiness = Business::factory()->create();
         $this->otherUser = User::factory()->create(['business_id' => $this->otherBusiness->id]);
         $this->otherCustomer = Customer::factory()->create(['business_id' => $this->otherBusiness->id]);
