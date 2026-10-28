@@ -1,3 +1,7 @@
+# Answering Policy
+> I will write in banglish but you will reply in english must.
+
+
 # Personal Test Execution Policy
 
 > Local-only policy for this checkout. It is intentionally untracked and must

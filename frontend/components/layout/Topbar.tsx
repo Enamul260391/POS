@@ -20,12 +20,10 @@ interface TopbarProps {
  * Application topbar.
  *
  * Holds the mobile navigation trigger, the current application area, a search
- * placeholder, notifications and the account menu. It is sticky so it stays
+ * field, notifications and the account menu. It is sticky so it stays
  * reachable while page content scrolls, and it reads the same navigation data
  * as the sidebar to label the current area — no duplicated route table.
  *
- * The search field is deliberately a disabled placeholder: global search is a
- * later phase, and a control that silently does nothing would be worse.
  * The area label is a paragraph, not a heading, because the page itself owns
  * the `h1`.
  */
@@ -60,7 +58,6 @@ export function Topbar({ isSidebarOpen, onOpenSidebar }: TopbarProps) {
           className="pl-8"
           placeholder="Search products, sales, customers..."
           aria-label="Search"
-          disabled
         />
       </div>
 

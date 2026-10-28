@@ -1,4 +1,4 @@
-# Strictly always read AGENT.md & AGENT.local.md both files when starting implement the prompt.  
+# Strictly always read AGENT.md & AGENT.local.md both files when start reading the prompt.  
 
 # Mandatory Git Read-Only Policy
 
