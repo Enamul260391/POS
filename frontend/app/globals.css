@@ -113,7 +113,7 @@
   --radius: 0.625rem;
 
   /* Application shell (sidebar, topbar) */
-  --sidebar: oklch(0.985 0 0);
+  --sidebar: oklch(0.95 0.02 260);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
   --sidebar-primary-foreground: oklch(0.985 0 0);
@@ -169,7 +169,7 @@
   --ring: oklch(0.556 0 0);
 
   /* Application shell (sidebar, topbar) */
-  --sidebar: oklch(0.205 0 0);
+  --sidebar: oklch(0.18 0.03 260);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
   --sidebar-primary-foreground: oklch(0.985 0 0);

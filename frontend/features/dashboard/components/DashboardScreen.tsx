@@ -136,6 +136,14 @@ function TodayKpis({ dashboard }: { dashboard: DashboardSummary }) {
         hint="After returns"
       />
       <DashboardKpi
+        id="dashboard-kpi-profit-loss"
+        icon={WalletCards}
+        label="Profit / Loss Today"
+        value={formatMoney(dashboard.todayNetSales - dashboard.todayTotalExpense)}
+        hint={dashboard.todayNetSales - dashboard.todayTotalExpense >= 0 ? "Profit" : "Loss"}
+        tone={dashboard.todayNetSales - dashboard.todayTotalExpense >= 0 ? "success" : "danger"}
+      />
+      <DashboardKpi
         icon={Truck}
         label="Purchases Today"
         value={formatMoney(dashboard.todayPurchaseTotal)}
