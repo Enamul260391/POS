@@ -115,7 +115,7 @@ export function ProductSearch({
 
   return (
     <div className="shrink-0 space-y-1.5">
-      <div className="grid gap-1.5 sm:grid-cols-2">
+      <div className="flex flex-col gap-1.5">
         <div className="relative">
           <Search
             className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"

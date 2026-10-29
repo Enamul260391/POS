@@ -55,7 +55,7 @@ export const ProductGrid = memo(function ProductGrid({
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-      <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+      <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4">
         {products.map((product) => (
           <ProductCard key={product.id} product={product} onAdd={onAdd} />
         ))}

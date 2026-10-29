@@ -34,7 +34,7 @@ export function CartPanel({ onCheckout }: CartPanelProps) {
   return (
     <aside
       aria-label="Current sale"
-      className="flex w-full shrink-0 flex-col border-t border-border bg-card/50 lg:h-full lg:min-h-0 lg:w-[380px] lg:border-t-0 lg:border-l xl:w-[420px]"
+      className="flex w-full shrink-0 flex-col border-t border-border bg-gradient-to-br from-violet-500/25 via-pink-500/15 to-amber-400/25 lg:h-full lg:min-h-0 lg:w-[570px] lg:border-t-0 lg:border-l xl:w-[610px]"
     >
       <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2.5">
         <ShoppingBag className="size-4" aria-hidden="true" />

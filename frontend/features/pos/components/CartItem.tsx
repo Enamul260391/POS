@@ -32,7 +32,7 @@ interface CartItemProps {
 const QUANTITY_FIELD_CLASS =
   "h-7 w-12 border-0 bg-transparent px-1 text-center text-sm tabular-nums [appearance:textfield] focus-visible:border-0 focus-visible:ring-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
 const DISCOUNT_FIELD_CLASS =
-  "h-7 w-20 rounded-md border-input text-right text-sm tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
+  "h-7 w-20 rounded-md border-2 border-black/30 bg-background text-right text-sm tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
 
 /**
  * Shown when the product's total ledger stock is exhausted.
@@ -142,9 +142,9 @@ export function CartItem({ line, totals }: CartItemProps) {
     };
 
   return (
-    <li className="space-y-2 p-2.5">
-      <div className="flex items-start gap-2">
-        <div className="min-w-0 flex-1">
+    <li className="space-y-2 mb-0.75 bg-white p-2.5 shadow-sm ml-2 mr-2">
+      <div className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-2">
+        <div className="min-w-0">
           <p className="truncate text-sm font-medium leading-tight">
             {line.product.name}
           </p>
@@ -153,18 +153,7 @@ export function CartItem({ line, totals }: CartItemProps) {
             {remaining !== null && ` · ${formatQuantity(remaining)} left`}
           </p>
         </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          onClick={() => useCartStore.getState().removeItem(line.id)}
-          aria-label={`Remove ${line.product.name}`}
-        >
-          <X aria-hidden="true" />
-        </Button>
-      </div>
 
-      <div className="flex flex-wrap items-center gap-1.5">
         <div className="flex items-center rounded-lg border border-border bg-background">
           <Button
             type="button"
@@ -203,7 +192,7 @@ export function CartItem({ line, totals }: CartItemProps) {
           </Button>
         </div>
 
-        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+        <div className="flex items-center gap-1.5">
           <label
             htmlFor={`item-discount-${line.id}`}
             className="shrink-0 text-xs text-muted-foreground"
@@ -224,6 +213,17 @@ export function CartItem({ line, totals }: CartItemProps) {
             onKeyDown={commitOnEnter(discountField.commit)}
           />
         </div>
+
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => useCartStore.getState().removeItem(line.id)}
+          aria-label={`Remove ${line.product.name}`}
+          className="col-start-4"
+        >
+          <X aria-hidden="true" />
+        </Button>
       </div>
 
       {error !== null && (

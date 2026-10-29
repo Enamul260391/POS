@@ -70,8 +70,11 @@ export function CartSummary({ onCheckout }: CartSummaryProps) {
     };
 
   return (
-    <div className="shrink-0 space-y-2 border-t border-border pt-3">
-      <SummaryRow label="Subtotal" value={formatMoney(totals.subtotal)} />
+    <div className="shrink-0 space-y-2 border border-border/50 bg-muted/20 p-3">
+      <div className="flex items-center justify-between gap-2">
+          <span className="text-sm">Subtotal</span>
+          <span className="font-medium tabular-nums">{formatMoney(totals.subtotal)}</span>
+        </div>
 
       {totals.itemDiscountTotal > 0 && (
         <SummaryRow
@@ -82,7 +85,7 @@ export function CartSummary({ onCheckout }: CartSummaryProps) {
       )}
 
       <div className="flex items-center justify-between gap-2">
-        <Label htmlFor="global-discount" className="text-sm text-muted-foreground">
+        <Label htmlFor="global-discount" className="text-sm text-foreground">
           Global discount
         </Label>
         <Input
@@ -92,7 +95,7 @@ export function CartSummary({ onCheckout }: CartSummaryProps) {
           step={0.01}
           inputMode="decimal"
           placeholder="0.00"
-          className="h-7 w-24 text-right text-sm tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          className="h-7 w-24 border-2 border-black/60 bg-background text-right text-sm tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
           value={discountField.text}
           onChange={(event) => discountField.setText(event.target.value)}
           onBlur={discountField.commit}
@@ -109,7 +112,7 @@ export function CartSummary({ onCheckout }: CartSummaryProps) {
         value={`+${formatMoney(totals.taxTotal)}`}
       />
 
-      <Separator />
+      <Separator className="h-1 bg-black" />
 
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm font-semibold">Grand total</span>
@@ -121,7 +124,7 @@ export function CartSummary({ onCheckout }: CartSummaryProps) {
       <Button
         type="button"
         size="lg"
-        className="w-full"
+        className="w-full rounded-none mb-1 bg-green-800 hover:bg-green-600 text-white"
         onClick={onCheckout}
         disabled={totals.lineCount === 0}
       >
