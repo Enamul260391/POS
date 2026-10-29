@@ -129,89 +129,84 @@ export function LoginForm() {
 
   return (
     <main className="flex flex-1 items-center justify-center bg-background p-6">
-      <section className="w-full max-w-sm rounded-xl border border-border bg-card p-8">
+      <div className="w-full max-w-sm space-y-6 rounded-2xl border-2 border-primary/30 bg-card p-8 shadow-md -mt-[50px]">
         <div className="flex flex-col items-center gap-2 text-center">
-          <span className="flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground">
-            <Store className="size-6" aria-hidden="true" />
+          <span className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+            <Store className="size-5" aria-hidden="true" />
           </span>
           <h1 className="text-lg font-semibold tracking-tight">{env.appName}</h1>
-          <p className="text-sm text-muted-foreground">
-            Sign in to open the till.
-          </p>
+          <p className="text-sm text-muted-foreground">Sign in to open the till.</p>
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit)} noValidate className="mt-6 grid gap-3">
-          <div className="grid gap-1.5">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              autoComplete="username"
-              placeholder="admin@pos.local"
-              autoFocus
-              aria-invalid={errors.email !== undefined}
-              {...register("email", {
-                onChange: () => {
-                  if (error !== null) {
-                    clearError();
-                  }
-                },
-              })}
-            />
-            <FormError message={errors.email?.message} />
-          </div>
-
-          <div className="grid gap-1.5">
-            <Label htmlFor="password">Password</Label>
-            {/* The button is a sibling of the input, not nested inside it, so the
-                input keeps being a plain text field for autofill and password
-                managers. The right padding on the input reserves the icon's
-                space, which is the only spacing this change introduces. */}
-            <div className="relative">
+        <form onSubmit={handleSubmit(onSubmit)} noValidate className="grid gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="email">Email</Label>
               <Input
-                id="password"
-                type={showPassword ? "text" : "password"}
-                autoComplete="current-password"
-                placeholder="••••••••"
-                className="pr-8"
-                aria-invalid={errors.password !== undefined}
-                {...register("password")}
+                id="email"
+                type="email"
+                autoComplete="username"
+                placeholder="admin@pos.local"
+                autoFocus
+                className="rounded-md border-2 border-violet-500/60"
+                aria-invalid={errors.email !== undefined}
+                {...register("email", {
+                  onChange: () => {
+                    if (error !== null) {
+                      clearError();
+                    }
+                  },
+                })}
               />
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                onClick={() => setShowPassword((visible) => !visible)}
-                aria-label={showPassword ? "Hide password" : "Show password"}
-                aria-pressed={showPassword}
-                title={showPassword ? "Hide password" : "Show password"}
-                className="absolute top-1/2 right-0.5 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                {showPassword ? (
-                  <EyeOff aria-hidden="true" />
-                ) : (
-                  <Eye aria-hidden="true" />
-                )}
-              </Button>
+              <FormError message={errors.email?.message} />
             </div>
-            <FormError message={errors.password?.message} />
-          </div>
 
-          {error !== null && (
-            <p
-              className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
-              role="alert"
-            >
-              {error}
-            </p>
-          )}
+            <div className="grid gap-1.5">
+              <Label htmlFor="password">Password</Label>
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
+                  placeholder="••••••••"
+                  className="pr-8 rounded-md border-2 border-amber-500/60"
+                  aria-invalid={errors.password !== undefined}
+                  {...register("password")}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => setShowPassword((visible) => !visible)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  aria-pressed={showPassword}
+                  title={showPassword ? "Hide password" : "Show password"}
+                  className="absolute top-1/2 right-0.5 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showPassword ? (
+                    <EyeOff aria-hidden="true" />
+                  ) : (
+                    <Eye aria-hidden="true" />
+                  )}
+                </Button>
+              </div>
+              <FormError message={errors.password?.message} />
+            </div>
 
-          <Button type="submit" size="lg" className="w-full" disabled={isLoading}>
-            <LogIn aria-hidden="true" />
-            {isLoading ? "Signing in…" : "Sign in"}
-          </Button>
-        </form>
-      </section>
+            {error !== null && (
+              <p
+                className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
+                role="alert"
+              >
+                {error}
+              </p>
+            )}
+
+            <Button type="submit" size="lg" className="w-full rounded-xl" disabled={isLoading}>
+              <LogIn aria-hidden="true" />
+              {isLoading ? "Signing in…" : "Sign in"}
+            </Button>
+          </form>
+        </div>
     </main>
   );
 }
