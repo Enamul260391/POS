@@ -124,7 +124,7 @@ export function ProductSearch({
           <Input
             ref={searchRef}
             type="search"
-            className="pl-8"
+            className="pl-8 border-2 border-gray-300 bg-transparent focus:bg-transparent focus:border-violet-500 focus-visible:outline-none focus-visible:ring-0"
             placeholder="Search name or SKU…"
             aria-label="Search products"
             value={query}
@@ -140,7 +140,7 @@ export function ProductSearch({
           />
           <Input
             ref={barcodeRef}
-            className="pl-8"
+            className="pl-8 border-2 border-gray-300 bg-transparent focus:bg-transparent focus:border-amber-500 focus-visible:outline-none focus-visible:ring-0"
             placeholder="Scan barcode or type SKU"
             aria-label="Barcode input"
             autoComplete="off"

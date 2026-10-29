@@ -35,8 +35,6 @@ export const ProductGrid = memo(function ProductGrid({
         role="status"
         aria-live="polite"
       >
-        <Loader2 className="size-6 animate-spin text-muted-foreground" aria-hidden="true" />
-        <p className="text-sm text-muted-foreground">Searching products…</p>
       </div>
     );
   }
