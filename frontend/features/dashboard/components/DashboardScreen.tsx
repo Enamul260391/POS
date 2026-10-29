@@ -53,15 +53,15 @@ export function DashboardScreen() {
     useApiResource(load, []);
 
   return (
-    <div className="flex flex-col gap-4">
-      <header className="flex flex-wrap items-baseline justify-between gap-2">
-        <div className="min-w-0">
-          <h2 className="font-heading text-sm font-semibold tracking-tight">
+    <div id="dashboard-screen-root" className="flex flex-col gap-8">
+      <header id="dashboard-screen-header" className="flex flex-wrap items-baseline justify-between gap-3 rounded-xl bg-gradient-to-r from-violet-500/10 via-indigo-400/10 to-teal-400/10 px-4 py-3">
+        <div id="dashboard-screen-title-block" className="min-w-0">
+          <h2 className="font-heading text-2xl font-bold tracking-tight text-foreground">
             Today at a glance
           </h2>
           {/* The day is the server's own, never the browser's, so the label
               cannot drift from the figures when the two timezones differ. */}
-          <p className="mt-0.5 text-xs text-muted-foreground">
+          <p className="mt-1 text-sm font-medium text-muted-foreground">
             {data !== null && data.date !== ""
               ? `Figures for ${data.date}`
               : "Today, in the business time zone"}
@@ -74,6 +74,7 @@ export function DashboardScreen() {
           size="sm"
           onClick={refresh}
           disabled={isRefreshing}
+          className="text-sm"
         >
           <RefreshCw
             className={isRefreshing ? "size-4 animate-spin" : "size-4"}
@@ -85,6 +86,7 @@ export function DashboardScreen() {
 
       {error !== null && (
         <div
+          id="dashboard-screen-error"
           role="alert"
           className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2"
         >
@@ -115,48 +117,53 @@ export function DashboardScreen() {
 function TodayKpis({ dashboard }: { dashboard: DashboardSummary }) {
   return (
     <section
+      id="dashboard-today-kpis"
       aria-label="Today"
-      className="grid grid-cols-2 gap-2 xl:grid-cols-3"
+      className="grid grid-cols-2 gap-8 xl:grid-cols-3"
     >
       <DashboardKpi
         icon={ReceiptText}
-        label="Sales today"
+        label="Gross Sales Today"
         value={formatMoney(dashboard.todayTotalSales)}
         hint={`${dashboard.todaySaleCount} invoices`}
+        tone="success"
       />
       <DashboardKpi
         icon={ReceiptText}
-        label="Net sales today"
+        label="Net Sales Today"
         value={formatMoney(dashboard.todayNetSales)}
-        tone="muted"
-        hint="After discounts and returns"
+        tone="success"
+        hint="After returns"
       />
       <DashboardKpi
         icon={Truck}
-        label="Purchases today"
+        label="Purchases Today"
         value={formatMoney(dashboard.todayPurchaseTotal)}
         hint={`${dashboard.todayPurchaseCount} orders`}
+        tone="danger"
       />
       <DashboardKpi
         icon={Wallet}
-        label="Expenses today"
+        label="Expenses Today"
         value={formatMoney(dashboard.todayTotalExpense)}
         hint={`${dashboard.todayExpenseCount} recorded`}
+        tone="danger"
       />
       <DashboardKpi
         icon={WalletCards}
-        label="Cash in register"
+        label="Cash in Register"
         value={formatMoney(dashboard.currentCashBalance)}
-        tone={dashboard.currentCashBalance > 0 ? "success" : "muted"}
+        tone={dashboard.currentCashBalance > 0 ? "success" : "warning"}
         hint={
           dashboard.currentCashBalance > 0 ? "Open register" : "No open register"
         }
+      
       />
       <DashboardKpi
         icon={Boxes}
-        label="Low stock"
+        label="Low Stock"
         value={String(dashboard.lowStockCount)}
-        tone={dashboard.lowStockCount > 0 ? "warning" : "muted"}
+        tone={dashboard.lowStockCount > 0 ? "warning" : "success"}
         hint={
           dashboard.lowStockCount > 0
             ? "At or below threshold"
@@ -170,15 +177,22 @@ function TodayKpis({ dashboard }: { dashboard: DashboardSummary }) {
 function LoadingState() {
   return (
     <div
+      id="dashboard-loading-state"
       role="status"
       aria-live="polite"
-      className="grid grid-cols-2 gap-2 xl:grid-cols-3"
+      className="grid grid-cols-2 gap-8 xl:grid-cols-3"
     >
       {[0, 1, 2, 3, 4, 5].map((index) => (
         <div
           key={index}
-          className="h-[58px] animate-pulse rounded-lg border border-border bg-card"
-        />
+          className="flex items-center gap-8 rounded-xl border border-border bg-gradient-to-br from-white to-slate-50 px-4 py-5 shadow-sm dark:from-slate-800 dark:to-slate-900 h-[128px]"
+        >
+          <div className="size-11 shrink-0 animate-pulse rounded-xl bg-muted" />
+          <div className="grid min-w-0 flex-1 gap-2">
+            <div className="h-4 w-24 animate-pulse rounded bg-muted" />
+            <div className="h-6 w-32 animate-pulse rounded bg-muted" />
+          </div>
+        </div>
       ))}
       <span className="sr-only">Loading dashboard…</span>
     </div>

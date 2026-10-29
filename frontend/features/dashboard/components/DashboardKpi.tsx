@@ -14,7 +14,9 @@ export interface DashboardKpiProps {
   /** Leading icon, matching the icon-in-tile treatment on the cash drawer. */
   icon: LucideIcon;
   /** Tints the value, e.g. destructive for an empty register. */
-  tone?: "default" | "muted" | "warning" | "success";
+  tone?: "default" | "muted" | "warning" | "success" | "danger";
+  /** Optional DOM id for the tile. */
+  id?: string;
   className?: string;
 }
 
@@ -35,26 +37,55 @@ export function DashboardKpi({
   hint,
   icon: Icon,
   tone = "default",
+  id,
   className,
 }: DashboardKpiProps) {
+  const accent =
+    tone === "success"
+      ? "from-emerald-500 to-teal-400"
+      : tone === "warning"
+      ? "from-rose-500 to-orange-400"
+      : tone === "muted"
+      ? "from-slate-400 to-slate-300"
+      : "from-violet-500 to-indigo-400";
+
   return (
     <div
+      id={id}
       className={cn(
-        "flex items-center gap-2.5 rounded-lg border border-border bg-card px-3 py-2.5",
+        "group flex items-center gap-8 rounded-xl border border-border bg-gradient-to-br from-white to-slate-50 px-4 py-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg dark:from-slate-800 dark:to-slate-900 h-[128px]",
         className,
       )}
     >
-      <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted">
-        <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
+      <span
+        className={cn(
+          "flex size-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-white shadow-md transition-transform duration-200 group-hover:scale-110",
+          accent,
+        )}
+      >
+        <Icon className="size-5" aria-hidden="true" />
       </span>
-      <span className="grid min-w-0 gap-0.5">
-        <span className="truncate text-xs text-muted-foreground">{label}</span>
+      <span className="grid min-w-0 gap-2">
         <span
           className={cn(
-            "truncate font-heading text-sm font-semibold tabular-nums",
-            tone === "muted" && "text-muted-foreground",
-            tone === "warning" && "text-destructive",
-            tone === "success" && "text-success",
+            "truncate text-base font-bold",
+            tone === "warning" && "text-amber-600",
+            tone === "success" && "text-emerald-600",
+            tone === "muted" && "text-amber-600",
+            tone === "danger" && "text-red-600",
+            tone === "default" && "text-orange-600",
+          )}
+        >
+          {label}
+        </span>
+        <span
+          className={cn(
+            "truncate font-heading text-2xl font-extrabold tabular-nums",
+            tone === "muted" && "text-amber-500",
+            tone === "danger" && "text-red-600",
+            tone === "warning" && "text-amber-500",
+            tone === "success" && "text-emerald-600",
+            tone === "default" && "text-orange-600",
           )}
         >
           {value}
